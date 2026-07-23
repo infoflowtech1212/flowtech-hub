@@ -11,7 +11,11 @@ import { dataverseClientFor } from './client.js';
  * (see SETUP.md §3). The status option-set values (1..5) must match the table's
  * choice column.
  */
-const TABLE = 'flowtech_requests'; // entity set (pluralized logical name)
+const TABLE = process.env.DATAVERSE_REQUEST_TABLE || 'flowtech_requests'; // entity set (pluralized logical name)
+
+/** True only when a Dataverse requests table is configured; otherwise the app
+ *  uses the built-in in-memory store so Approvals works out of the box. */
+export const requestsDataverseEnabled = (): boolean => Boolean(process.env.DATAVERSE_REQUEST_TABLE);
 
 const STATUS_TO_CODE: Record<RequestStatus, number> = {
   draft: 1,

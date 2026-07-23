@@ -43,6 +43,7 @@ import {
   dvListPendingApprovals,
   dvListRequestsFor,
   dvSetStatus,
+  requestsDataverseEnabled,
 } from '../dataverse/requests.js';
 import { sendNotifyFlow, startApprovalFlow } from '../flows/powerAutomate.js';
 import { listNotifications, markAllRead, markRead, pushBroadcast, pushNotification, unreadCount } from '../store/notifications.js';
@@ -92,6 +93,9 @@ const live =
   };
 
 const isMock = (req: Request) => req.auth?.isMock ?? USE_MOCKS;
+// Use the built-in in-memory request store unless a Dataverse requests table is
+// configured (DATAVERSE_REQUEST_TABLE). Keeps Approvals working out of the box.
+const useRequestStore = (req: Request) => isMock(req) || !requestsDataverseEnabled();
 
 // --- Identity --------------------------------------------------------------
 apiRouter.get('/me', async (req, res, next) => {
@@ -412,7 +416,7 @@ apiRouter.get(
   requireCapability('requests.view'),
   live(async (req, res) => {
     const auth = req.auth!;
-    if (isMock(req)) {
+    if (useRequestStore(req)) {
       const items = listRequestsFor(auth.userId);
       res.json({ items, nextCursor: null, total: items.length });
       return;
@@ -452,7 +456,7 @@ apiRouter.post(
     const requesterName = auth.isMock ? mockUser.displayName : auth.userId;
     const input = { ...parsed.data, requesterId: auth.userId, requesterName };
 
-    const created = isMock(req)
+    const created = useRequestStore(req)
       ? createRequestRow(input)
       : await dvCreateRequest(auth, input);
 
@@ -479,7 +483,7 @@ apiRouter.get(
   '/approvals/pending',
   requireCapability('requests.approve'),
   live(async (req, res) => {
-    if (isMock(req)) {
+    if (useRequestStore(req)) {
       const items = listPendingApprovals();
       res.json({ items, nextCursor: null, total: items.length });
       return;
@@ -502,7 +506,7 @@ apiRouter.post(
     const auth = req.auth!;
     const approverName = auth.isMock ? mockUser.displayName : auth.userId;
 
-    const updated = isMock(req)
+    const updated = useRequestStore(req)
       ? setRequestStatus(req.params.id, decision, approverName)
       : await dvSetStatus(auth, req.params.id, decision, approverName);
     if (!updated) {
