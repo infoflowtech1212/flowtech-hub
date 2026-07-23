@@ -1,0 +1,116 @@
+/* Inter self-hosted (SIL OFL) — no external font CDN, so the CSP stays 'self'. */
+@import './fonts.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * FlowTech client-portal tokens as RGB channel triples (space separated) so
+ * Tailwind's `rgb(var(--x) / <alpha-value>)` opacity modifiers work. LIGHT is
+ * the default (matches the portal design); DARK overrides the same names.
+ */
+:root,
+[data-theme='light'] {
+  --ft-ink: 241 244 245; /* #F1F4F5 off-white page */
+  --ft-surface-deep: 246 248 249; /* #F6F8F9 inset / input */
+  --ft-surface: 255 255 255; /* #FFFFFF card */
+  --ft-elevated: 255 255 255; /* #FFFFFF raised */
+  --ft-content: 26 42 47; /* #1A2A2F slate near-black */
+  --ft-muted: 94 109 114; /* #5E6D72 */
+  --ft-subtle: 147 161 165; /* #93A1A5 */
+  --ft-accent: 15 124 138; /* #0F7C8A teal primary */
+  --ft-accent-bright: 10 102 114; /* #0A6672 deeper teal (hover / links) */
+  --ft-line: 20 40 45; /* used at low alpha for hairline borders */
+  --ft-success: 47 160 90; /* #2FA05A */
+  --ft-warning: 224 154 59; /* #E09A3B amber */
+  --ft-danger: 216 82 75; /* #D8524B */
+
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --ft-ink: 15 23 26; /* #0F171A deep slate */
+  --ft-surface-deep: 19 30 33; /* #131E21 */
+  --ft-surface: 22 35 38; /* #162326 card */
+  --ft-elevated: 27 42 46; /* #1B2A2E raised */
+  --ft-content: 230 237 238; /* #E6EDEE */
+  --ft-muted: 147 163 167; /* #93A3A7 */
+  --ft-subtle: 99 118 123; /* #63767B */
+  --ft-accent: 27 163 178; /* #1BA3B2 brighter teal for dark */
+  --ft-accent-bright: 51 194 208; /* #33C2D0 cyan (hover / links) */
+  --ft-line: 255 255 255; /* white at low alpha for hairlines */
+  --ft-success: 63 181 107; /* #3FB56B */
+  --ft-warning: 232 179 74; /* #E8B34A */
+  --ft-danger: 233 117 110; /* #E9756E */
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--ft-line) / 0.1);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink text-content font-sans antialiased;
+    font-feature-settings: 'cv05' 1, 'cv08' 1, 'calt' 1; /* Inter: nicer l/i, ligatures */
+    letter-spacing: -0.006em;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-bold tracking-tightest text-content;
+  }
+
+  /* Visible, on-brand focus ring for keyboard users (WCAG). */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ft-accent-bright));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: rgb(var(--ft-accent) / 0.35);
+  }
+}
+
+@layer components {
+  .ft-card {
+    @apply rounded-card border border-line/10 bg-surface shadow-card;
+  }
+
+  .ft-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-4 py-2 text-sm font-semibold
+      transition-colors focus-visible:outline-none disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .ft-btn-primary {
+    @apply ft-btn bg-accent text-white hover:bg-accent-bright hover:text-ink;
+  }
+
+  .ft-btn-ghost {
+    @apply ft-btn border border-line/15 text-content hover:border-accent/60 hover:text-accent-bright;
+  }
+
+  .ft-input {
+    @apply w-full rounded-lg border border-line/15 bg-surface-deep px-3 py-2 text-sm text-content
+      placeholder:text-subtle focus:border-accent focus:outline-none;
+  }
+
+  /* Skeleton shimmer for loading states. */
+  .ft-skeleton {
+    @apply relative overflow-hidden rounded-md bg-line/5;
+  }
+  .ft-skeleton::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    content: '';
+    background: linear-gradient(90deg, transparent, rgb(var(--ft-line) / 0.08), transparent);
+  }
+}

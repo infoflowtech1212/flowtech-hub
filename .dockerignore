@@ -1,0 +1,18 @@
+# Keep the Docker build context small + never ship local artifacts/secrets.
+**/node_modules
+**/dist
+**/.turbo
+.git
+.github
+.env
+.env.*
+!.env.production.example
+.sessions.json
+.msal-cache.json
+hub_data.tgz
+*.log
+npm-debug.log*
+.DS_Store
+.vscode
+.idea
+scratchpad

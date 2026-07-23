@@ -1,0 +1,25 @@
+# FlowTech Hub — "behind an existing reverse proxy" mode (srv1232566).
+# The VPS already serves other sites on 80/443, so the hub does NOT take those
+# ports. It binds to localhost:8080 only; your existing web server (Nginx /
+# Apache / CloudPanel) proxies hub.flowtechapps.com -> http://127.0.0.1:8080
+# and handles the TLS certificate. See DEPLOY.md.
+#
+#   docker compose up -d --build
+#
+# (For a dedicated box with free 80/443, use docker-compose.caddy.yml instead.)
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env.production
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - hub_data:/data # sessions + msal token cache survive redeploys
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8080:4000' # localhost only — the host proxy reaches it here
+
+volumes:
+  hub_data:

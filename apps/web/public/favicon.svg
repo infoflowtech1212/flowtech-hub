@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- White rounded plate so the grey/teal mark reads on light and dark tab bars -->
+  <rect width="64" height="64" rx="12" fill="#ffffff" />
+  <g transform="translate(4 4) scale(0.875)">
+    <!-- f -->
+    <path d="M4 18v-4a10 10 0 0 1 10-10h18l-8 14H4z" fill="#8C8C8C" />
+    <rect x="2" y="24" width="24" height="10" fill="#8C8C8C" />
+    <rect x="12" y="24" width="12" height="36" fill="#8C8C8C" />
+    <!-- T -->
+    <path d="M34 4h26v14H26z" fill="#12A2B3" />
+    <rect x="34" y="18" width="13" height="42" fill="#12A2B3" />
+  </g>
+</svg>

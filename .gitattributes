@@ -1,0 +1,7 @@
+# Normalize line endings to LF in the repo so files work on the Linux server
+# (Dockerfile, configs, shell) regardless of contributors' OS.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.woff2 binary
+*.svg text eol=lf

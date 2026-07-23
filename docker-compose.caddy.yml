@@ -1,0 +1,34 @@
+# ALTERNATE: dedicated box with FREE ports 80/443 (NOT srv1232566's case).
+# Runs the hub + a Caddy proxy that auto-issues HTTPS for hub.flowtechapps.com.
+#   docker compose -f docker-compose.caddy.yml up -d --build
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file: .env.production
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - hub_data:/data
+    restart: unless-stopped
+    expose:
+      - '4000'
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - hub
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  hub_data:
+  caddy_data:
+  caddy_config:
