@@ -1,8 +1,13 @@
+import path from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { DocumentItem, Paged } from '@flowtech/shared';
 import { config } from '../config.js';
 import { TtlCache } from '../lib/cache.js';
 import type { AuthContext } from '../auth/middleware.js';
 import { graphClientFor } from './client.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface DriveRef {
   siteId: string;
@@ -33,10 +38,29 @@ export interface LibraryConnection {
   libraryName: string;
   webUrl?: string;
 }
-// In-app selected libraries, keyed by scope. TODO(prod): persist in Dataverse.
+// Selected/pinned libraries, keyed by scope. Persisted to disk (DATA_DIR in
+// production) so the connection survives redeploys and a manual pick sticks.
+const CONN_PATH = process.env.DATA_DIR
+  ? path.join(process.env.DATA_DIR, 'connections.json')
+  : path.resolve(__dirname, '../../.connections.json');
 const connections = new Map<string, LibraryConnection>();
+try {
+  (JSON.parse(readFileSync(CONN_PATH, 'utf8')) as LibraryConnection[]).forEach((c) => connections.set(c.scope, c));
+} catch {
+  /* no saved connections yet */
+}
+function persistConnections() {
+  try {
+    writeFileSync(CONN_PATH, JSON.stringify([...connections.values()]), 'utf8');
+  } catch {
+    /* best-effort */
+  }
+}
 export const getConnection = (scope: 'documents' | 'clientdocs') => connections.get(scope) ?? null;
-export const setConnection = (c: LibraryConnection) => connections.set(c.scope, c);
+export const setConnection = (c: LibraryConnection) => {
+  connections.set(c.scope, c);
+  persistConnections();
+};
 
 // Pinned/fixed libraries resolved by name so the Document Center "just works"
 // without anyone using the picker. Override the names via env if the SharePoint
@@ -71,26 +95,36 @@ export async function ensureConnection(
   try {
     const sites = await listSites(auth);
     const wantSite = fixed.siteName.toLowerCase();
-    const site =
-      sites.find((s) => s.name.toLowerCase() === wantSite) ??
-      sites.find((s) => s.name.toLowerCase().includes(wantSite));
-    if (!site) return null;
-    const libs = await listLibraries(auth, site.id);
     const wantLib = fixed.libraryName.toLowerCase();
-    const lib =
-      libs.find((l) => l.name?.toLowerCase() === wantLib) ??
-      libs.find((l) => l.name?.toLowerCase().includes(wantLib));
-    if (!lib) return null;
-    const conn: LibraryConnection = {
-      scope,
-      siteId: site.id,
-      siteName: site.name,
-      driveId: lib.id,
-      libraryName: lib.name,
-      webUrl: lib.webUrl,
-    };
-    setConnection(conn);
-    return conn;
+    // There can be several similarly-named sites (e.g. multiple "FlowTech").
+    // Consider every site whose name matches, exact-name matches first, and pick
+    // the FIRST one that actually contains the target library.
+    const candidates = sites
+      .filter((s) => s.name.toLowerCase().includes(wantSite))
+      .sort((a, b) => Number(b.name.toLowerCase() === wantSite) - Number(a.name.toLowerCase() === wantSite));
+    for (const site of candidates) {
+      try {
+        const libs = await listLibraries(auth, site.id);
+        const lib =
+          libs.find((l) => l.name?.toLowerCase() === wantLib) ??
+          libs.find((l) => l.name?.toLowerCase().includes(wantLib));
+        if (lib) {
+          const conn: LibraryConnection = {
+            scope,
+            siteId: site.id,
+            siteName: site.name,
+            driveId: lib.id,
+            libraryName: lib.name,
+            webUrl: lib.webUrl,
+          };
+          setConnection(conn);
+          return conn;
+        }
+      } catch {
+        /* this site's drives weren't readable — try the next candidate */
+      }
+    }
+    return null;
   } catch {
     return null;
   }

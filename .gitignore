@@ -22,6 +22,7 @@ hub_data.tgz
 # Dev token/session persistence — contain tokens; NEVER commit
 .msal-cache.json
 .sessions.json
+.connections.json
 
 # Logs
 logs/
