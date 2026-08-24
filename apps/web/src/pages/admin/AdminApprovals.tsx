@@ -1,5 +1,5 @@
 import { Check, X } from 'lucide-react';
-import { usePendingApprovals, useDecideRequest, useRequests } from '@/hooks/useApi';
+import { usePendingApprovals, useDecideRequest, useAllRequests } from '@/hooks/useApi';
 import { PageHeader, SectionCard } from '@/components/ui/Page';
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { StatusBadge, Badge } from '@/components/ui/Badge';
@@ -13,7 +13,7 @@ import { relativeDate } from '@/lib/format';
 export default function AdminApprovals() {
   const pending = usePendingApprovals();
   const decide = useDecideRequest();
-  const all = useRequests();
+  const all = useAllRequests();
 
   return (
     <div className="mx-auto max-w-4xl">

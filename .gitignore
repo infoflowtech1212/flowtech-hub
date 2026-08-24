@@ -19,6 +19,9 @@ build/
 # Deploy backups
 hub_data.tgz
 
+# Dataverse table import CSVs (local scratch, not project source)
+data-table/
+
 # Dev token/session persistence — contain tokens; NEVER commit
 .msal-cache.json
 .sessions.json

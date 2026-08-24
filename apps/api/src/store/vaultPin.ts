@@ -1,10 +1,12 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import type { VaultScope } from '@flowtech/shared';
+import { hashPinToString, newSalt, pinMatches } from '../lib/pin.js';
 
 /**
- * Per-user vault PIN — a second security layer over the password vaults. The
- * PIN is never stored in plain text: we keep a scrypt hash + random salt and
- * compare in constant time. Keyed by the user's id. TODO(prod): persist the
- * hash in Dataverse / a secrets store, add lockout after repeated failures.
+ * Per-user, per-vault PIN — a second security layer over the password vaults
+ * (dev/mock only; in-memory, resets on restart). Open Vault and Personal
+ * Vault each have their own independent PIN, keyed by user + scope. Live
+ * sessions use dataverse/vaultPin.ts instead when DATAVERSE_VAULTPIN_TABLE is
+ * set — see useLocalPinStore in routes/intranet.ts.
  */
 interface PinRecord {
   salt: string;
@@ -12,19 +14,17 @@ interface PinRecord {
 }
 const pins = new Map<string, PinRecord>();
 
-const hashPin = (pin: string, salt: string) => scryptSync(pin, salt, 64);
+const key = (userId: string, scope: VaultScope) => `${userId}:${scope}`;
 
-export const hasPin = (userId: string): boolean => pins.has(userId);
+export const hasPin = (userId: string, scope: VaultScope): boolean => pins.has(key(userId, scope));
 
-export function setPin(userId: string, pin: string): void {
-  const salt = randomBytes(16).toString('hex');
-  pins.set(userId, { salt, hash: hashPin(pin, salt).toString('hex') });
+export function setPin(userId: string, scope: VaultScope, pin: string): void {
+  const salt = newSalt();
+  pins.set(key(userId, scope), { salt, hash: hashPinToString(pin, salt) });
 }
 
-export function verifyPin(userId: string, pin: string): boolean {
-  const rec = pins.get(userId);
+export function verifyPin(userId: string, scope: VaultScope, pin: string): boolean {
+  const rec = pins.get(key(userId, scope));
   if (!rec) return false;
-  const attempt = hashPin(pin, rec.salt);
-  const stored = Buffer.from(rec.hash, 'hex');
-  return attempt.length === stored.length && timingSafeEqual(attempt, stored);
+  return pinMatches(pin, rec.salt, rec.hash);
 }

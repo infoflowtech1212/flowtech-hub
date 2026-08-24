@@ -3,8 +3,12 @@ import type { CalendarEvent } from '@flowtech/shared';
 
 /**
  * Admin-posted company events, shown on everyone's calendar (source:
- * 'company'). Kept in memory for dev. TODO(prod): Dataverse, or a shared
- * Microsoft 365 calendar the BFF writes to.
+ * 'company'). This is the fallback store only — the production path is a
+ * real shared Microsoft 365 calendar (see graph/calendar.ts's
+ * gListCompanyEvents/gCreateCompanyEvent), used whenever COMPANY_CALENDAR_
+ * MAILBOX is configured (see useLocalCompanyEvents in routes/api.ts). Kept
+ * in memory here for mock mode and for setups without a shared mailbox —
+ * resets on every restart.
  */
 let events: CalendarEvent[] = [];
 

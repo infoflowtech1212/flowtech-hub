@@ -45,6 +45,57 @@ export async function checkDirectoryAdmin(getGraphToken: () => Promise<string>):
   }
 }
 
+/**
+ * Bulk lookup: every userId currently a member of the admin directory
+ * role(s) (Global Administrator by default) or the optional Entra admin
+ * group — the same two signals checkDirectoryAdmin()/checkAdminGroup() check
+ * for "me", but for every listed person at once (a handful of Graph calls
+ * regardless of how many people are listed, not one per person). Used to
+ * flag bootstrap admins on the People & Access / Document Access admin
+ * pages, so their "access can't be removed here" note is accurate for
+ * admins who aren't just on the ADMIN_EMAILS allowlist.
+ *
+ * Requires Directory.Read.All (and GroupMember.Read.All/Group.Read.All if
+ * ADMIN_GROUP_ID is set) — on any Graph error (permission not granted, no
+ * activated admin role in the tenant, etc.) that signal is silently skipped
+ * rather than failing the whole page.
+ */
+export async function listBootstrapAdminUserIds(getGraphToken: () => Promise<string>): Promise<Set<string>> {
+  const client = graphClientFor(getGraphToken);
+  const ids = new Set<string>();
+
+  try {
+    const roles = await client.api('/directoryRoles').select(['id', 'roleTemplateId']).get();
+    const matchedRoleIds: string[] = (Array.isArray(roles?.value) ? roles.value : [])
+      .filter(
+        (r: { roleTemplateId?: string }) =>
+          r.roleTemplateId && ADMIN_ROLE_TEMPLATE_IDS.includes(r.roleTemplateId.toLowerCase()),
+      )
+      .map((r: { id: string }) => r.id);
+    for (const roleId of matchedRoleIds) {
+      const members = await client.api(`/directoryRoles/${roleId}/members`).select(['id']).get();
+      for (const m of Array.isArray(members?.value) ? members.value : []) {
+        if (m?.id) ids.add(m.id);
+      }
+    }
+  } catch {
+    /* Directory.Read.All not granted, or no activated admin role — skip this signal */
+  }
+
+  if (config.adminGroupId) {
+    try {
+      const members = await client.api(`/groups/${config.adminGroupId}/members`).select(['id']).get();
+      for (const m of Array.isArray(members?.value) ? members.value : []) {
+        if (m?.id) ids.add(m.id);
+      }
+    } catch {
+      /* GroupMember.Read.All / Group.Read.All not granted — skip this signal */
+    }
+  }
+
+  return ids;
+}
+
 interface GraphUser {
   id: string;
   displayName?: string;

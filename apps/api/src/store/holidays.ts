@@ -6,7 +6,7 @@ import type { Holiday } from '@flowtech/shared';
  * TODO(prod): Dataverse table (or a SharePoint list) so they persist.
  */
 let holidays: Holiday[] = [
-  { id: 'hol-001', name: 'Independence Day', date: '2026-08-15' },
+  { id: 'hol-001', name: 'Independence Day', date: '2027-08-15' },
   { id: 'hol-002', name: 'Gandhi Jayanti', date: '2026-10-02' },
   { id: 'hol-003', name: 'Diwali', date: '2026-11-08' },
   { id: 'hol-004', name: 'Christmas', date: '2026-12-25' },

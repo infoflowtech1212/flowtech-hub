@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, Copy, Download, File, Folder, Home, Search, Share2, Upload, X } from 'lucide-react';
-import type { DocumentItem } from '@flowtech/shared';
+import type { Capability, DocumentItem, LibraryScope } from '@flowtech/shared';
 import { useDocuments, useDocumentSearch, useLibraryConnection, useShareDocument } from '@/hooks/useApi';
 import { useDebounced } from '@/hooks/useDebounced';
 import { useCan } from '@/hooks/useCan';
@@ -11,7 +11,17 @@ import { EmptyState, ErrorState, Skeleton } from '@/components/ui/states';
 import { api, ApiRequestError } from '@/lib/api';
 import { formatBytes, relativeDate } from '@/lib/format';
 
-type Scope = 'documents' | 'clientdocs';
+type Scope = LibraryScope;
+
+// Courses and Client Documents use their own dedicated capabilities rather
+// than 'documents.*' — see docCapability() in routes/api.ts for the matching
+// server-side check. ('documents.view' is baseline for every employee;
+// 'documents.upload'/'.share' are still per-person grants, same as here.)
+const capFor = (scope: Scope, action: 'upload' | 'share'): Capability => {
+  if (scope === 'courses') return `courses.${action}` as Capability;
+  if (scope === 'clientdocs') return 'clientdocs.manage';
+  return `documents.${action}` as Capability;
+};
 
 /**
  * SharePoint document browser for a given library scope. Shows a connection
@@ -37,7 +47,7 @@ export function DocumentBrowser({ scope, title }: { scope: Scope; title: string 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [shareFor, setShareFor] = useState<DocumentItem | null>(null);
-  const canShare = can('documents.share');
+  const canShare = can(capFor(scope, 'share'));
   const qc = useQueryClient();
 
   const items = active.data?.items ?? [];
@@ -93,7 +103,7 @@ export function DocumentBrowser({ scope, title }: { scope: Scope; title: string 
                 Change library
               </button>
             )}
-            {can('documents.upload') && (
+            {can(capFor(scope, 'upload')) && (
               <>
                 <input ref={fileInput} type="file" className="hidden" onChange={onUpload} />
                 <button

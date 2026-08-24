@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FolderGit2, Link2 } from 'lucide-react';
+import type { LibraryScope } from '@flowtech/shared';
 import {
   useConnectLibrary,
   useSharePointLibraries,
@@ -19,7 +20,7 @@ export function ConnectLibrary({
   title,
   onConnected,
 }: {
-  scope: 'documents' | 'clientdocs';
+  scope: LibraryScope;
   title: string;
   onConnected?: () => void;
 }) {

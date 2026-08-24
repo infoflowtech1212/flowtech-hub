@@ -74,6 +74,8 @@ export interface AccessRow {
   mail?: string;
   jobTitle?: string;
   grants: Capability[];
+  /** True when the user is a bootstrap admin — grants here are a no-op for them (they already have every capability). */
+  bootstrapAdmin?: boolean;
 }
 
 export const useDocumentAccess = (q: string) =>
@@ -155,7 +157,8 @@ export const useAdminQuickLinks = () =>
 export function useSaveQuickLinks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (items: QuickLink[]) => api.put<Paged<QuickLink>>('/admin/quicklinks', { items }),
+    mutationFn: ({ items, force }: { items: QuickLink[]; force?: boolean }) =>
+      api.put<Paged<QuickLink>>('/admin/quicklinks', { items, force }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'quicklinks'] });
       qc.invalidateQueries({ queryKey: ['quicklinks'] }); // employee dashboard widget

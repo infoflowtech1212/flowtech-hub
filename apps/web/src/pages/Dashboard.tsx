@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarClock, Megaphone, Bell } from 'lucide-react';
+import { ArrowRight, CalendarClock, Clock, Megaphone, Bell } from 'lucide-react';
 import { useMe, useTodayEvents, useAnnouncements, useNotifications } from '@/hooks/useApi';
+import { useAttendanceToday } from '@/hooks/useAttendance';
 import { useCan } from '@/hooks/useCan';
 import { greeting } from '@/lib/format';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -41,6 +43,7 @@ export default function Dashboard() {
             <p className="mt-1 max-w-lg text-sm text-muted">
               Here's what's happening across FlowTech today.
             </p>
+            {can('attendance.view') && <AttendancePunchButton />}
           </div>
           <WorldClocks />
         </div>
@@ -200,6 +203,33 @@ function StatTile({
         <p className="mt-1 truncate text-xs text-muted">{hint ?? label}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Prominent CTA pill — same color logic as the actual Punch In/Out buttons on
+ * the Attendance page (teal = punch in, red = punch out), so the color always
+ * signals the action waiting for you, not just a static label.
+ */
+function AttendancePunchButton() {
+  const { data } = useAttendanceToday();
+  const state = data?.state;
+  const label = state === 'working' ? 'Punch Out' : state === 'done' ? 'Done for today' : 'Punch In';
+  const color =
+    state === 'working'
+      ? 'bg-danger text-white hover:bg-danger/90'
+      : state === 'done'
+        ? 'bg-line/10 text-muted hover:bg-line/15'
+        : 'bg-accent text-white hover:bg-accent-bright hover:text-ink';
+  return (
+    <Link
+      to="/attendance"
+      className={`mt-4 inline-flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-semibold shadow-card transition-colors ${color}`}
+    >
+      <Clock className="h-4 w-4" />
+      {label}
+      <ArrowRight className="h-4 w-4" />
+    </Link>
   );
 }
 

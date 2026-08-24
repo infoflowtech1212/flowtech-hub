@@ -8,6 +8,7 @@ import type {
   DirectoryPerson,
   DocumentItem,
   Holiday,
+  LibraryScope,
   Notification,
   OrgChart,
   Paged,
@@ -153,6 +154,15 @@ export function useCreateEvent() {
   });
 }
 
+/** Delete an event from the user's own Outlook calendar. */
+export function useDeleteEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<void>(`/calendar/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['calendar'] }),
+  });
+}
+
 export const usePendingApprovals = () =>
   useQuery({
     queryKey: ['approvals', 'pending'],
@@ -178,7 +188,7 @@ export interface SharePointSite {
   webUrl?: string;
 }
 export interface LibraryConnection {
-  scope: 'documents' | 'clientdocs';
+  scope: LibraryScope;
   siteId: string;
   siteName: string;
   driveId: string;
@@ -186,7 +196,7 @@ export interface LibraryConnection {
   webUrl?: string;
 }
 
-export const useLibraryConnection = (scope: 'documents' | 'clientdocs' = 'documents') =>
+export const useLibraryConnection = (scope: LibraryScope = 'documents') =>
   useQuery({
     queryKey: ['documents', 'connection', scope],
     queryFn: () =>
@@ -218,7 +228,7 @@ export function useConnectLibrary() {
   });
 }
 
-type DocScope = 'documents' | 'clientdocs';
+type DocScope = LibraryScope;
 
 export const useDocuments = (path: string, scope: DocScope = 'documents') =>
   useQuery({
@@ -248,6 +258,10 @@ export const useDocumentSearch = (q: string, scope: DocScope = 'documents') =>
 
 export const useRequests = () =>
   useQuery({ queryKey: ['requests'], queryFn: () => api.get<Paged<ApprovalRequest>>('/requests') });
+
+/** Admin/approver view — every request team-wide, not just the signed-in user's own. */
+export const useAllRequests = () =>
+  useQuery({ queryKey: ['requests', 'all'], queryFn: () => api.get<Paged<ApprovalRequest>>('/admin/requests') });
 
 export interface CreateRequestInput {
   type: RequestType;

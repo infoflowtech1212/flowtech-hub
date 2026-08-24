@@ -11,7 +11,8 @@ describe('RBAC permission resolution', () => {
   it('gives every user the Employee baseline (no admin.access)', () => {
     const { capabilities } = resolveCapabilities('user-baseline', false);
     expect(capabilities).toContain('directory.view');
-    expect(capabilities).toContain('documents.upload');
+    expect(capabilities).toContain('documents.view');
+    expect(capabilities).not.toContain('documents.upload'); // per-person grant now, not baseline
     expect(capabilities).not.toContain('admin.access');
     expect(capabilities).not.toContain('requests.approve');
   });

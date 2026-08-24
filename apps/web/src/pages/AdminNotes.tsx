@@ -77,7 +77,13 @@ function NoteCard({ note }: { note: AdminNote }) {
           >
             {note.pinned ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
           </button>
-          <button className="ft-btn-ghost px-2 py-1" title="Delete" onClick={() => remove.mutate(note.id)}>
+          <button
+            className="ft-btn-ghost px-2 py-1"
+            title="Delete"
+            onClick={() => {
+              if (confirm(`Delete "${note.title}"?`)) remove.mutate(note.id);
+            }}
+          >
             <Trash2 className="h-4 w-4 text-danger" />
           </button>
         </div>

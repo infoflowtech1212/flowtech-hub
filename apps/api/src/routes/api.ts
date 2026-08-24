@@ -7,8 +7,9 @@
 import express, { Router, type NextFunction, type Request, type Response } from 'express';
 import axios from 'axios';
 import { z } from 'zod';
-import type { DirectoryPerson, OrgChart } from '@flowtech/shared';
+import type { Capability, CalendarEvent, DirectoryPerson, LibraryScope, OrgChart } from '@flowtech/shared';
 import { getProfileSupplement, setProfileSupplement } from '../store/profiles.js';
+import { dvGetProfile, dvSetProfile, profilesDataverseEnabled } from '../dataverse/profiles.js';
 import { config, USE_MOCKS } from '../config.js';
 import { getMyPhoto, getMyProfile } from '../graph/me.js';
 import { getOrgPeople, getPersonChart, getPersonPhoto, listPeople } from '../graph/directory.js';
@@ -25,13 +26,23 @@ import {
   setConnection,
   uploadFile,
 } from '../graph/sharepoint.js';
-import { createEvent, getEvents } from '../graph/calendar.js';
+import {
+  createEvent,
+  deleteEvent,
+  getEvents,
+  createCompanyEvent as gCreateCompanyEvent,
+  deleteCompanyEvent as gDeleteCompanyEvent,
+  listCompanyEvents as gListCompanyEvents,
+} from '../graph/calendar.js';
 import { ReauthRequiredError } from '../auth/tokens.js';
 import { roleNamesFor } from '../auth/permissions.js';
 import { requireCapability } from '../auth/middleware.js';
 import { adminRouter } from './admin.js';
 import { intranetRouter } from './intranet.js';
+import { attendanceRouter } from './attendance.js';
 import { listAnnouncements, listQuickLinks } from '../store/content.js';
+import { dvListQuickLinks, quickLinksDataverseEnabled } from '../dataverse/quickLinks.js';
+import { dvListAnnouncements, announcementDataverseEnabled } from '../dataverse/announcements.js';
 import {
   createRequestRow,
   listPendingApprovals,
@@ -49,14 +60,25 @@ import { sendNotifyFlow, startApprovalFlow } from '../flows/powerAutomate.js';
 import { listNotifications, markAllRead, markRead, pushBroadcast, pushNotification, unreadCount } from '../store/notifications.js';
 import { createAsset, deleteAsset, listAssets, updateAsset } from '../store/assets.js';
 import { createHoliday, deleteHoliday, listHolidays } from '../store/holidays.js';
+import { dvCreateHoliday, dvDeleteHoliday, dvListHolidays, holidaysDataverseEnabled } from '../dataverse/holidays.js';
 import { createCompanyEvent, deleteCompanyEvent, listCompanyEvents } from '../store/events.js';
 import {
+  companyEventsDataverseEnabled,
+  dvCreateCompanyEvent,
+  dvDeleteCompanyEvent,
+  dvListCompanyEvents,
+} from '../dataverse/companyEvents.js';
+import {
   mockCelebrationRecords,
+  mockCourses,
+  mockCreatedEvents,
+  mockCreatedEventsInRange,
   mockDirectory,
   mockDocuments,
   mockRangeEvents,
   mockTodayEvents,
   mockUser,
+  removeMockCreatedEvent,
 } from '../mocks.js';
 
 export const apiRouter = Router();
@@ -96,6 +118,9 @@ const isMock = (req: Request) => req.auth?.isMock ?? USE_MOCKS;
 // Use the built-in in-memory request store unless a Dataverse requests table is
 // configured (DATAVERSE_REQUEST_TABLE). Keeps Approvals working out of the box.
 const useRequestStore = (req: Request) => isMock(req) || !requestsDataverseEnabled();
+// Same guard for the "About you" profile supplement — in-memory unless a
+// Dataverse profiles table is configured (DATAVERSE_PROFILE_TABLE).
+const useProfileStore = (req: Request) => isMock(req) || !profilesDataverseEnabled();
 
 // --- Identity --------------------------------------------------------------
 apiRouter.get('/me', async (req, res, next) => {
@@ -117,9 +142,13 @@ apiRouter.get('/me', async (req, res, next) => {
 
 // Self-service profile supplement — the signed-in user completes their own
 // LinkedIn / working hours / bio / DOB / joining date (feeds their Org card).
-apiRouter.get('/me/profile', (req, res) => {
-  res.json(getProfileSupplement(req.auth!.userId));
-});
+apiRouter.get(
+  '/me/profile',
+  live(async (req, res) => {
+    const userId = req.auth!.userId;
+    res.json(useProfileStore(req) ? getProfileSupplement(userId) : await dvGetProfile(userId));
+  }),
+);
 
 const meProfileBody = z.object({
   linkedIn: z.string().max(300).optional(),
@@ -129,13 +158,22 @@ const meProfileBody = z.object({
   hireDate: z.string().max(40).optional(),
 });
 
-apiRouter.put('/me/profile', (req, res) => {
-  const parsed = meProfileBody.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
-  }
-  res.json(setProfileSupplement(req.auth!.userId, parsed.data));
-});
+apiRouter.put(
+  '/me/profile',
+  live(async (req, res) => {
+    const parsed = meProfileBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
+      return;
+    }
+    const userId = req.auth!.userId;
+    res.json(
+      useProfileStore(req)
+        ? setProfileSupplement(userId, parsed.data)
+        : await dvSetProfile(userId, parsed.data),
+    );
+  }),
+);
 
 // BFF photo proxy — the browser never sees a raw Graph URL or token.
 apiRouter.get('/me/photo', async (req, res, next) => {
@@ -205,8 +243,8 @@ apiRouter.get(
 
 // Merge the Hub-managed supplement (LinkedIn/working hours/bio + DOB/hire
 // overrides) onto the person, without letting empty overrides hide Microsoft data.
-const withSupplement = (person: DirectoryPerson): DirectoryPerson => {
-  const s = getProfileSupplement(person.id);
+const withSupplement = async (req: Request, person: DirectoryPerson): Promise<DirectoryPerson> => {
+  const s = useProfileStore(req) ? getProfileSupplement(person.id) : await dvGetProfile(person.id);
   return {
     ...person,
     linkedIn: s.linkedIn ?? person.linkedIn,
@@ -229,7 +267,7 @@ apiRouter.get(
       }
       const manager = mockDirectory.find((p) => p.jobTitle === 'Founder & Principal');
       const chart: OrgChart = {
-        person: withSupplement({ ...person, managerName: manager?.displayName }),
+        person: await withSupplement(req, { ...person, managerName: manager?.displayName }),
         manager,
         reports: mockDirectory.filter((p) => p.department === person.department && p.id !== person.id),
       };
@@ -237,7 +275,7 @@ apiRouter.get(
       return;
     }
     const chart = await getPersonChart(req.auth!, req.params.id);
-    res.json({ ...chart, person: withSupplement(chart.person) });
+    res.json({ ...chart, person: await withSupplement(req, chart.person) });
   }),
 );
 
@@ -262,12 +300,41 @@ apiRouter.get(
 );
 
 // --- Announcements ---------------------------------------------------------
-apiRouter.get('/announcements', requireCapability('announcements.view'), (_req, res) => {
-  const items = listAnnouncements();
-  res.json({ items, nextCursor: null, total: items.length });
-});
+apiRouter.get(
+  '/announcements',
+  requireCapability('announcements.view'),
+  live(async (req, res) => {
+    const items =
+      isMock(req) || !announcementDataverseEnabled() ? listAnnouncements() : await dvListAnnouncements();
+    res.json({ items, nextCursor: null, total: items.length });
+  }),
+);
 
 // --- Calendar --------------------------------------------------------------
+// Company events have three possible backends, in priority order:
+//  1. 'graph' — a real shared M365 calendar when COMPANY_CALENDAR_MAILBOX is
+//     set. getEvents() already reads that calendar internally when building
+//     the signed-in user's merged view, so no separate fetch/merge happens.
+//  2. 'dataverse' — DATAVERSE_COMPANYEVENT_TABLE, the durable fallback for
+//     setups without a shared mailbox.
+//  3. 'local' — the in-memory store (mock mode, or neither of the above
+//     configured). Resets on every restart.
+type CompanyEventsMode = 'graph' | 'dataverse' | 'local';
+const companyEventsMode = (req: Request): CompanyEventsMode => {
+  if (isMock(req)) return 'local';
+  if (config.calendar.companyMailbox) return 'graph';
+  if (companyEventsDataverseEnabled()) return 'dataverse';
+  return 'local';
+};
+
+async function companyEventsInRange(
+  mode: 'dataverse' | 'local',
+  startIso: string,
+  endIso: string,
+): Promise<CalendarEvent[]> {
+  return mode === 'dataverse' ? dvListCompanyEvents(startIso, endIso) : listCompanyEvents(startIso, endIso);
+}
+
 apiRouter.get(
   '/calendar/today',
   requireCapability('calendar.view'),
@@ -277,12 +344,19 @@ apiRouter.get(
     start.setHours(0, 0, 0, 0);
     const end = new Date(now);
     end.setHours(23, 59, 59, 999);
-    const companyToday = listCompanyEvents(start.toISOString(), end.toISOString());
     if (isMock(req)) {
-      res.json({ items: [...companyToday, ...mockTodayEvents(new Date())], nextCursor: null });
+      const companyToday = listCompanyEvents(start.toISOString(), end.toISOString());
+      const created = mockCreatedEventsInRange(start.toISOString(), end.toISOString());
+      res.json({ items: [...companyToday, ...created, ...mockTodayEvents(new Date())], nextCursor: null });
       return;
     }
     const graph = await getEvents(req.auth!, start.toISOString(), end.toISOString());
+    const mode = companyEventsMode(req);
+    if (mode === 'graph') {
+      res.json(graph);
+      return;
+    }
+    const companyToday = await companyEventsInRange(mode, start.toISOString(), end.toISOString());
     res.json({ ...graph, items: [...companyToday, ...graph.items] });
   }),
 );
@@ -298,23 +372,36 @@ apiRouter.get(
     const start = req.query.start ? String(req.query.start) : defaultStart;
     const end = req.query.end ? String(req.query.end) : defaultEnd;
 
-    const companyEvents = listCompanyEvents(start, end);
     if (isMock(req)) {
-      const items = [...companyEvents, ...mockRangeEvents(start, end)];
+      const companyEvents = listCompanyEvents(start, end);
+      const created = mockCreatedEventsInRange(start, end);
+      const items = [...companyEvents, ...created, ...mockRangeEvents(start, end)];
       res.json({ items, nextCursor: null, total: items.length });
       return;
     }
     const graph = await getEvents(req.auth!, start, end);
+    const mode = companyEventsMode(req);
+    if (mode === 'graph') {
+      res.json({ ...graph, total: graph.items.length });
+      return;
+    }
+    const companyEvents = await companyEventsInRange(mode, start, end);
     const items = [...companyEvents, ...graph.items];
     res.json({ ...graph, items, total: items.length });
   }),
 );
 
 // --- Company holidays (admin-managed, shown on everyone's calendar) ---------
-apiRouter.get('/holidays', requireCapability('calendar.view'), (_req, res) => {
-  const items = listHolidays();
-  res.json({ items, nextCursor: null, total: items.length });
-});
+const useHolidayStore = (req: Request) => isMock(req) || !holidaysDataverseEnabled();
+
+apiRouter.get(
+  '/holidays',
+  requireCapability('calendar.view'),
+  live(async (req, res) => {
+    const items = useHolidayStore(req) ? listHolidays() : await dvListHolidays();
+    res.json({ items, nextCursor: null, total: items.length });
+  }),
+);
 
 const holidayBody = z.object({
   name: z.string().min(1).max(120),
@@ -322,26 +409,48 @@ const holidayBody = z.object({
   description: z.string().max(500).optional(),
 });
 
-apiRouter.post('/holidays', requireCapability('holidays.manage'), (req, res) => {
-  const parsed = holidayBody.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
-  }
-  res.status(201).json(createHoliday(parsed.data));
-});
+apiRouter.post(
+  '/holidays',
+  requireCapability('holidays.manage'),
+  live(async (req, res) => {
+    const parsed = holidayBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
+      return;
+    }
+    const holiday = useHolidayStore(req) ? createHoliday(parsed.data) : await dvCreateHoliday(parsed.data);
+    res.status(201).json(holiday);
+  }),
+);
 
-apiRouter.delete('/holidays/:id', requireCapability('holidays.manage'), (req, res) => {
-  if (!deleteHoliday(req.params.id)) {
-    return res.status(404).json({ error: { code: 'not_found', message: 'Holiday not found' } });
-  }
-  res.status(204).end();
-});
+apiRouter.delete(
+  '/holidays/:id',
+  requireCapability('holidays.manage'),
+  live(async (req, res) => {
+    if (useHolidayStore(req)) {
+      if (!deleteHoliday(req.params.id)) {
+        res.status(404).json({ error: { code: 'not_found', message: 'Holiday not found' } });
+        return;
+      }
+      res.status(204).end();
+      return;
+    }
+    await dvDeleteHoliday(req.params.id);
+    res.status(204).end();
+  }),
+);
 
 // --- Company events (admin-posted, shown on everyone's calendar) -----------
-apiRouter.get('/company-events', requireCapability('calendar.view'), (_req, res) => {
-  const items = listCompanyEvents();
-  res.json({ items, nextCursor: null, total: items.length });
-});
+apiRouter.get(
+  '/company-events',
+  requireCapability('calendar.view'),
+  live(async (req, res) => {
+    const mode = companyEventsMode(req);
+    const items =
+      mode === 'graph' ? await gListCompanyEvents(req.auth!) : mode === 'dataverse' ? await dvListCompanyEvents() : listCompanyEvents();
+    res.json({ items, nextCursor: null, total: items.length });
+  }),
+);
 
 const companyEventBody = z.object({
   subject: z.string().min(1).max(255),
@@ -351,22 +460,49 @@ const companyEventBody = z.object({
   location: z.string().max(200).optional(),
 });
 
-apiRouter.post('/company-events', requireCapability('holidays.manage'), (req, res) => {
-  const parsed = companyEventBody.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
-  }
-  const event = createCompanyEvent(parsed.data);
-  pushBroadcast({ title: `New company event: ${event.subject}`, body: event.location ?? undefined, kind: 'system', link: '/calendar' });
-  res.status(201).json(event);
-});
+apiRouter.post(
+  '/company-events',
+  requireCapability('holidays.manage'),
+  live(async (req, res) => {
+    const parsed = companyEventBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: { code: 'bad_request', message: parsed.error.message } });
+      return;
+    }
+    const mode = companyEventsMode(req);
+    const event =
+      mode === 'graph'
+        ? await gCreateCompanyEvent(req.auth!, parsed.data)
+        : mode === 'dataverse'
+          ? await dvCreateCompanyEvent(parsed.data)
+          : createCompanyEvent(parsed.data);
+    pushBroadcast({ title: `New company event: ${event.subject}`, body: event.location ?? undefined, kind: 'system', link: '/calendar' });
+    res.status(201).json(event);
+  }),
+);
 
-apiRouter.delete('/company-events/:id', requireCapability('holidays.manage'), (req, res) => {
-  if (!deleteCompanyEvent(req.params.id)) {
-    return res.status(404).json({ error: { code: 'not_found', message: 'Event not found' } });
-  }
-  res.status(204).end();
-});
+apiRouter.delete(
+  '/company-events/:id',
+  requireCapability('holidays.manage'),
+  live(async (req, res) => {
+    const mode = companyEventsMode(req);
+    if (mode === 'graph') {
+      await gDeleteCompanyEvent(req.auth!, req.params.id);
+      res.status(204).end();
+      return;
+    }
+    if (mode === 'dataverse') {
+      await dvDeleteCompanyEvent(req.params.id);
+      res.status(204).end();
+      return;
+    }
+    if (!deleteCompanyEvent(req.params.id)) {
+      res.status(404).json({ error: { code: 'not_found', message: 'Event not found' } });
+      return;
+    }
+    res.status(204).end();
+  }),
+);
 
 // Create an event → writes to the user's Outlook calendar (needs Calendars.ReadWrite).
 const createEventBody = z
@@ -393,8 +529,9 @@ apiRouter.post(
       return;
     }
     if (isMock(req)) {
-      // No real calendar in mock mode — echo back a created-looking event.
-      res.status(201).json({
+      // No real calendar in mock mode — keep it in mockCreatedEvents so a
+      // follow-up GET /calendar actually shows it, instead of just echoing.
+      const event: CalendarEvent = {
         id: `e-${Date.now()}`,
         subject: parsed.data.subject,
         start: parsed.data.start,
@@ -402,10 +539,32 @@ apiRouter.post(
         isAllDay: parsed.data.isAllDay ?? false,
         location: parsed.data.location,
         source: 'personal',
-      });
+      };
+      mockCreatedEvents.push(event);
+      res.status(201).json(event);
       return;
     }
     res.status(201).json(await createEvent(req.auth!, parsed.data));
+  }),
+);
+
+// Delete an event from the signed-in user's own Outlook calendar (personal
+// events only — company events have their own delete route above, gated by
+// holidays.manage since they're shared/admin-managed).
+apiRouter.delete(
+  '/calendar/:id',
+  requireCapability('calendar.view'),
+  live(async (req, res) => {
+    if (isMock(req)) {
+      if (!removeMockCreatedEvent(req.params.id)) {
+        res.status(404).json({ error: { code: 'not_found', message: 'Event not found' } });
+        return;
+      }
+      res.status(204).end();
+      return;
+    }
+    await deleteEvent(req.auth!, req.params.id);
+    res.status(204).end();
   }),
 );
 
@@ -421,7 +580,7 @@ apiRouter.get(
       res.json({ items, nextCursor: null, total: items.length });
       return;
     }
-    const items = await dvListRequestsFor(auth, auth.userId);
+    const items = await dvListRequestsFor(auth.userId);
     res.json({ items, nextCursor: null, total: items.length });
   }),
 );
@@ -453,12 +612,12 @@ apiRouter.post(
       return;
     }
     const auth = req.auth!;
-    const requesterName = auth.isMock ? mockUser.displayName : auth.userId;
+    const requesterName = auth.isMock ? mockUser.displayName : (await getMyProfile(auth)).displayName;
     const input = { ...parsed.data, requesterId: auth.userId, requesterName };
 
     const created = useRequestStore(req)
       ? createRequestRow(input)
-      : await dvCreateRequest(auth, input);
+      : await dvCreateRequest(input);
 
     // Fire the approval flow (no-op in mock). The flow calls /flows/approval-callback later.
     await startApprovalFlow({
@@ -488,7 +647,7 @@ apiRouter.get(
       res.json({ items, nextCursor: null, total: items.length });
       return;
     }
-    const items = await dvListPendingApprovals(req.auth!);
+    const items = await dvListPendingApprovals();
     res.json({ items, nextCursor: null, total: items.length });
   }),
 );
@@ -504,11 +663,11 @@ apiRouter.post(
       return;
     }
     const auth = req.auth!;
-    const approverName = auth.isMock ? mockUser.displayName : auth.userId;
+    const approverName = auth.isMock ? mockUser.displayName : (await getMyProfile(auth)).displayName;
 
     const updated = useRequestStore(req)
       ? setRequestStatus(req.params.id, decision, approverName)
-      : await dvSetStatus(auth, req.params.id, decision, approverName);
+      : await dvSetStatus(req.params.id, decision, approverName);
     if (!updated) {
       res.status(404).json({ error: { code: 'not_found', message: 'Request not found' } });
       return;
@@ -529,17 +688,42 @@ apiRouter.post(
   }),
 );
 
+// Which library scope a documents request targets.
+const docScope = (req: Request): LibraryScope =>
+  req.query.scope === 'clientdocs' ? 'clientdocs' : req.query.scope === 'courses' ? 'courses' : 'documents';
+
+// Courses gets its own dedicated capabilities (view for everyone, upload/share
+// admin-granted) so it doesn't inherit 'documents.view', which every employee
+// has by default for the main Document center ('documents.upload'/'.share'
+// are still per-person grants there — see DOC_ACCESS_CAPS in routes/admin.ts).
+// Client Documents gets its own capabilities too — clientdocs.view/manage —
+// since 'documents.view' is baseline for every employee and would otherwise
+// leave the "private by default" client library open to everyone regardless
+// of what's granted on the Document Access admin page. There's no separate
+// clientdocs.share — 'manage' covers upload and share.
+const docCapability = (scope: LibraryScope, action: 'view' | 'upload' | 'share'): Capability => {
+  if (scope === 'courses') return `courses.${action}` as Capability;
+  if (scope === 'clientdocs') return action === 'view' ? 'clientdocs.view' : 'clientdocs.manage';
+  return `documents.${action}` as Capability;
+};
+const requireDocCapability = (action: 'view' | 'upload' | 'share') => (req: Request, res: Response, next: NextFunction) => {
+  const cap = docCapability(docScope(req), action);
+  if (req.auth?.has(cap)) return next();
+  res.status(403).json({ error: { code: 'forbidden', message: `Missing capability: ${cap}` } });
+};
+
 // --- SharePoint library connection (admin picker) --------------------------
 // Which library is connected (everyone can check, to know if it's set up).
 apiRouter.get(
   '/documents/connection',
-  requireCapability('documents.view'),
+  requireDocCapability('view'),
   live(async (req, res) => {
-    const scope = req.query.scope === 'clientdocs' ? 'clientdocs' : 'documents';
+    const scope = docScope(req);
     if (isMock(req)) {
       // Mock mode: pretend a library is connected so the demo shows documents.
+      const libraryName = scope === 'courses' ? 'Courses' : scope === 'clientdocs' ? 'Client Access' : 'Documents';
       res.json({
-        connection: { scope, siteId: 'mock', siteName: 'FlowTech (demo)', driveId: 'mock', libraryName: 'Documents' },
+        connection: { scope, siteId: 'mock', siteName: 'FlowTech (demo)', driveId: 'mock', libraryName },
       });
       return;
     }
@@ -568,7 +752,7 @@ apiRouter.get(
 
 // Connect a library to Documents or Client Documents (admin only).
 const connectBody = z.object({
-  scope: z.enum(['documents', 'clientdocs']),
+  scope: z.enum(['documents', 'clientdocs', 'courses']),
   siteId: z.string().min(1),
   siteName: z.string().min(1),
   driveId: z.string().min(1),
@@ -584,19 +768,16 @@ apiRouter.put('/documents/connection', requireCapability('admin.settings.manage'
   res.json({ connection: parsed.data });
 });
 
-// Which library scope a documents request targets ('documents' | 'clientdocs').
-const docScope = (req: Request): 'documents' | 'clientdocs' =>
-  req.query.scope === 'clientdocs' ? 'clientdocs' : 'documents';
-
 // --- Documents (SharePoint library) ----------------------------------------
 apiRouter.get(
   '/documents',
-  requireCapability('documents.view'),
+  requireDocCapability('view'),
   live(async (req, res) => {
     const path = req.query.path ? String(req.query.path) : '';
     const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
     if (isMock(req)) {
-      res.json({ items: mockDocuments, nextCursor: null, total: mockDocuments.length });
+      const items = docScope(req) === 'courses' ? mockCourses : mockDocuments;
+      res.json({ items, nextCursor: null, total: items.length });
       return;
     }
     res.json(await listChildren(req.auth!, path, cursor, docScope(req)));
@@ -605,12 +786,13 @@ apiRouter.get(
 
 apiRouter.get(
   '/documents/search',
-  requireCapability('documents.view'),
+  requireDocCapability('view'),
   live(async (req, res) => {
     const q = String(req.query.q ?? '');
     if (isMock(req)) {
       const ql = q.toLowerCase();
-      const items = mockDocuments.filter((d) => d.name.toLowerCase().includes(ql));
+      const source = docScope(req) === 'courses' ? mockCourses : mockDocuments;
+      const items = source.filter((d) => d.name.toLowerCase().includes(ql));
       res.json({ items, nextCursor: null, total: items.length });
       return;
     }
@@ -621,7 +803,7 @@ apiRouter.get(
 // Upload — raw binary body; filename + target folder come from the query.
 apiRouter.put(
   '/documents/content',
-  requireCapability('documents.upload'),
+  requireDocCapability('upload'),
   express.raw({ type: '*/*', limit: '15mb' }),
   live(async (req, res) => {
     const name = String(req.query.name ?? '').trim();
@@ -649,7 +831,7 @@ apiRouter.put(
 // Download — streamed through the BFF so SharePoint permissions still apply.
 apiRouter.get(
   '/documents/:id/download',
-  requireCapability('documents.view'),
+  requireDocCapability('view'),
   live(async (req, res) => {
     if (isMock(req)) {
       res.status(404).json({ error: { code: 'not_found', message: 'Download unavailable in mock mode' } });
@@ -662,10 +844,10 @@ apiRouter.get(
   }),
 );
 
-// Create a shareable link for a file (requires documents.share).
+// Create a shareable link for a file (requires documents.share / courses.share).
 apiRouter.post(
   '/documents/:id/share',
-  requireCapability('documents.share'),
+  requireDocCapability('share'),
   live(async (req, res) => {
     if (isMock(req)) {
       res.json({ webUrl: 'https://example.sharepoint.com/:mock-share-link', name: 'file' });
@@ -739,9 +921,14 @@ apiRouter.delete('/assets/:id', requireCapability('assets.manage'), (req, res) =
 });
 
 // --- Quick links (available to any authenticated user) ---------------------
-apiRouter.get('/quicklinks', (_req, res) => {
-  res.json({ items: listQuickLinks(), nextCursor: null });
-});
+apiRouter.get(
+  '/quicklinks',
+  live(async (req, res) => {
+    const items =
+      isMock(req) || !quickLinksDataverseEnabled() ? listQuickLinks() : await dvListQuickLinks();
+    res.json({ items, nextCursor: null });
+  }),
+);
 
 // Favicon proxy — renders an app's real logo without loosening the SPA's CSP
 // (external images are blocked; this serves the icon from our own origin).
@@ -772,6 +959,9 @@ apiRouter.get(
 
 // --- Intranet features (projects, help desk, legal, client docs, vault) ----
 apiRouter.use('/', intranetRouter);
+
+// --- Attendance (punch in/out, EOD summaries) -------------------------------
+apiRouter.use('/attendance', attendanceRouter);
 
 // --- Admin console API (capability-gated inside) ---------------------------
 apiRouter.use('/admin', adminRouter);

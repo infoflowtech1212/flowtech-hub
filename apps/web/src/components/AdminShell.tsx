@@ -6,6 +6,7 @@ import {
   Boxes,
   CalendarDays,
   CheckSquare,
+  Clock,
   FolderLock,
   IdCard,
   KeyRound,
@@ -48,6 +49,7 @@ const adminGroups: AdminNavGroup[] = [
     items: [
       { to: '/admin/approvals', label: 'Approvals', icon: CheckSquare, capability: 'requests.approve' },
       { to: '/admin/tickets', label: 'Help Desk', icon: LifeBuoy, capability: 'helpdesk.manage' },
+      { to: '/admin/attendance', label: 'Attendance', icon: Clock, capability: 'attendance.manage' },
       { to: '/admin/expenses', label: 'Expenses', icon: Wallet, capability: 'expenses.view' },
       { to: '/admin/vault', label: 'Shared Vault', icon: KeyRound, capability: 'vault.manage' },
       { to: '/admin/notes', label: 'Notes & Ideas', icon: Lightbulb, capability: 'notes.view' },

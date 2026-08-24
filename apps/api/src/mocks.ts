@@ -7,6 +7,7 @@ import type {
   Announcement,
   ApprovalRequest,
   Asset,
+  AttendanceRecord,
   CalendarEvent,
   DirectoryPerson,
   DocumentItem,
@@ -143,6 +144,25 @@ export const mockAnnouncements: Announcement[] = [
     category: 'Operations',
   },
 ];
+
+// Events created via POST /calendar while in mock mode — there's no real
+// mailbox to write to, so they're kept here for the session, letting a
+// follow-up GET /calendar or /calendar/today actually show what was created.
+export const mockCreatedEvents: CalendarEvent[] = [];
+
+const overlaps = (e: CalendarEvent, startIso: string, endIso: string) =>
+  new Date(e.end).getTime() >= new Date(startIso).getTime() &&
+  new Date(e.start).getTime() <= new Date(endIso).getTime();
+
+export function removeMockCreatedEvent(id: string): boolean {
+  const idx = mockCreatedEvents.findIndex((e) => e.id === id);
+  if (idx === -1) return false;
+  mockCreatedEvents.splice(idx, 1);
+  return true;
+}
+
+export const mockCreatedEventsInRange = (startIso: string, endIso: string): CalendarEvent[] =>
+  mockCreatedEvents.filter((e) => overlaps(e, startIso, endIso));
 
 export function mockTodayEvents(base = new Date()): CalendarEvent[] {
   return [
@@ -339,6 +359,90 @@ export const mockDocuments: DocumentItem[] = [
     lastModifiedDateTime: new Date(Date.now() - 14 * 864e5).toISOString(),
   },
 ];
+
+export const mockCourses: DocumentItem[] = [
+  { id: 'c-f1', name: 'Onboarding', kind: 'folder', path: '/Onboarding' },
+  { id: 'c-f2', name: 'Sales Training', kind: 'folder', path: '/Sales Training' },
+  {
+    id: 'c-1',
+    name: 'Welcome to FlowTech.mp4',
+    kind: 'file',
+    mimeType: 'video/mp4',
+    size: 84_213_000,
+    path: '/Welcome to FlowTech.mp4',
+    lastModifiedBy: 'Priya Nair',
+    lastModifiedDateTime: new Date(Date.now() - 21 * 864e5).toISOString(),
+  },
+  {
+    id: 'c-2',
+    name: 'Brand Guidelines.pdf',
+    kind: 'file',
+    mimeType: 'application/pdf',
+    size: 1_204_400,
+    path: '/Brand Guidelines.pdf',
+    lastModifiedBy: 'Hannah Klein',
+    lastModifiedDateTime: new Date(Date.now() - 10 * 864e5).toISOString(),
+  },
+];
+
+/** Demo attendance history — a few past days for the mock user, plus a
+ *  couple of colleagues currently "working" so the admin team dashboard
+ *  isn't empty. Seeded once at boot (see routes/attendance.ts). */
+export function mockAttendanceSeed(base: Date = new Date()): AttendanceRecord[] {
+  const dateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dayAgo = (n: number) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() - n);
+    return d;
+  };
+
+  const history: AttendanceRecord[] = [1, 2, 3, 4].map((n, i) => {
+    const day = dayAgo(n);
+    const now = new Date().toISOString();
+    return {
+      id: `att-hist-${n}`,
+      userId: mockUser.id,
+      userName: mockUser.displayName,
+      date: dateStr(day),
+      checkIn: at(day, 9, 30),
+      checkOut: at(day, 18, i % 2 === 0 ? 15 : 45),
+      status: 'present',
+      completedTasks: ['Reviewed pending requests', 'Synced with delivery team', 'Updated project tracker'].slice(
+        0,
+        2 + (i % 2),
+      ),
+      tomorrowsPlan: ['Ship the intranet attendance system', 'Follow up on client onboarding', 'Prep weekly report'][
+        i % 3
+      ],
+      blockers: i === 1 ? 'Waiting on design sign-off' : undefined,
+      createdDateTime: now,
+      updatedDateTime: now,
+    };
+  });
+
+  const currentlyWorking: AttendanceRecord[] = [
+    { person: mockDirectory[0], hour: 9 },
+    { person: mockDirectory[2], hour: 10 },
+  ].map(({ person, hour }, i) => {
+    const now = new Date().toISOString();
+    return {
+      id: `att-live-${i}`,
+      userId: person.id,
+      userName: person.displayName,
+      date: dateStr(base),
+      checkIn: at(base, hour, 15),
+      checkOut: null,
+      status: 'present',
+      completedTasks: [],
+      tomorrowsPlan: '',
+      createdDateTime: now,
+      updatedDateTime: now,
+    };
+  });
+
+  return [...history, ...currentlyWorking];
+}
 
 // Seeded from the FlowTech SharePoint site. URLs that aren't public services
 // default to '#' — an admin sets the real link in Admin → Quick Links.

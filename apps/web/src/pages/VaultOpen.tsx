@@ -3,7 +3,7 @@ import { VaultGate } from '@/components/VaultGate';
 
 export default function VaultOpen() {
   return (
-    <VaultGate>
+    <VaultGate scope="open">
       <VaultView scope="open" />
     </VaultGate>
   );

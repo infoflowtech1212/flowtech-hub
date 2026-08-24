@@ -30,6 +30,15 @@ export function formatBytes(bytes?: number): string {
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+/** Elapsed time as zero-padded HH:MM:SS — for the live punch-duration ticker. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = String(Math.floor(total / 3600)).padStart(2, '0');
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+  const s = String(total % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
 export function initials(name: string): string {
   return name
     .split(/\s+/)

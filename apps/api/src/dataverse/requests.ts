@@ -1,120 +1,121 @@
 import type { ApprovalRequest, RequestStatus, RequestType } from '@flowtech/shared';
-import type { AuthContext } from '../auth/middleware.js';
+import { config } from '../config.js';
+import { acquireDataverseAppToken } from '../auth/tokens.js';
 import { dataverseClientFor } from './client.js';
 
 /**
- * Live Dataverse persistence for approval requests. Assumes a custom table
- * `flowtech_request` with the columns mapped below. Adjust the logical names to
- * match your solution's publisher prefix.
+ * Live Dataverse persistence for approval requests — the app's own
+ * application user (client-credentials token), so no per-employee Dataverse
+ * license is needed to submit a request. Same pattern as dataverse/vault.ts.
  *
- * TODO(tenant): confirm the table + column logical names during Dataverse setup
- * (see SETUP.md §3). The status option-set values (1..5) must match the table's
- * choice column.
+ * Column logical names follow the publisher prefix, individually overridable
+ * since real table builds rarely match the P+suffix pattern exactly. Type and
+ * Status are plain TEXT (not Choice) — the app controls the fixed set of
+ * values itself, avoiding Dataverse option-set-value mapping entirely (see
+ * data-table/requests.csv for the columns this expects by default).
+ *
+ * Enabled only when DATAVERSE_REQUEST_TABLE is set; otherwise the app uses
+ * the built-in in-memory store so Requests works out of the box.
  */
-const TABLE = process.env.DATAVERSE_REQUEST_TABLE || 'flowtech_requests'; // entity set (pluralized logical name)
+const TABLE = process.env.DATAVERSE_REQUEST_TABLE || ''; // entity set (plural)
+const P = process.env.DATAVERSE_REQUEST_PREFIX || 'flowtech_';
+const ID_COL = process.env.DATAVERSE_REQUEST_ID_COL || `${P}requestid`;
+const TYPE_COL = process.env.DATAVERSE_REQUEST_TYPE_COL || `${P}type`;
+const TITLE_COL = process.env.DATAVERSE_REQUEST_TITLE_COL || `${P}title`;
+const DESCRIPTION_COL = process.env.DATAVERSE_REQUEST_DESCRIPTION_COL || `${P}description`;
+const STATUS_COL = process.env.DATAVERSE_REQUEST_STATUS_COL || `${P}status`;
+const REQUESTERID_COL = process.env.DATAVERSE_REQUEST_REQUESTERID_COL || `${P}requesterid`;
+const REQUESTERNAME_COL = process.env.DATAVERSE_REQUEST_REQUESTERNAME_COL || `${P}requestername`;
+const APPROVERNAME_COL = process.env.DATAVERSE_REQUEST_APPROVERNAME_COL || `${P}approvername`;
+const AMOUNT_COL = process.env.DATAVERSE_REQUEST_AMOUNT_COL || `${P}amount`;
+const STARTDATE_COL = process.env.DATAVERSE_REQUEST_STARTDATE_COL || `${P}startdate`;
+const ENDDATE_COL = process.env.DATAVERSE_REQUEST_ENDDATE_COL || `${P}enddate`;
 
-/** True only when a Dataverse requests table is configured; otherwise the app
- *  uses the built-in in-memory store so Approvals works out of the box. */
-export const requestsDataverseEnabled = (): boolean => Boolean(process.env.DATAVERSE_REQUEST_TABLE);
+export const requestsDataverseEnabled = (): boolean => Boolean(config.dataverse.url && TABLE);
 
-const STATUS_TO_CODE: Record<RequestStatus, number> = {
-  draft: 1,
-  pending: 2,
-  approved: 3,
-  rejected: 4,
-  cancelled: 5,
-};
-const CODE_TO_STATUS = Object.fromEntries(
-  Object.entries(STATUS_TO_CODE).map(([k, v]) => [v, k]),
-) as Record<number, RequestStatus>;
+const client = () => dataverseClientFor(() => acquireDataverseAppToken());
 
 interface DvRow {
-  flowtech_requestid: string;
-  flowtech_type: RequestType;
-  flowtech_title: string;
-  flowtech_description?: string;
-  flowtech_status: number;
-  flowtech_requesterid: string;
-  flowtech_requestername: string;
-  flowtech_approvername?: string;
-  flowtech_amount?: number;
-  flowtech_startdate?: string;
-  flowtech_enddate?: string;
-  createdon: string;
-  modifiedon: string;
+  [key: string]: unknown;
 }
+
+const SELECT = `$select=${[
+  ID_COL,
+  TYPE_COL,
+  TITLE_COL,
+  DESCRIPTION_COL,
+  STATUS_COL,
+  REQUESTERID_COL,
+  REQUESTERNAME_COL,
+  APPROVERNAME_COL,
+  AMOUNT_COL,
+  STARTDATE_COL,
+  ENDDATE_COL,
+].join(',')},createdon,modifiedon`;
 
 const toDto = (r: DvRow): ApprovalRequest => ({
-  id: r.flowtech_requestid,
-  type: r.flowtech_type,
-  title: r.flowtech_title,
-  description: r.flowtech_description,
-  status: CODE_TO_STATUS[r.flowtech_status] ?? 'pending',
-  requesterId: r.flowtech_requesterid,
-  requesterName: r.flowtech_requestername,
-  approverName: r.flowtech_approvername,
-  amount: r.flowtech_amount,
-  startDate: r.flowtech_startdate,
-  endDate: r.flowtech_enddate,
-  createdDateTime: r.createdon,
-  updatedDateTime: r.modifiedon,
+  id: r[ID_COL] as string,
+  type: r[TYPE_COL] as RequestType,
+  title: (r[TITLE_COL] as string) ?? '',
+  description: (r[DESCRIPTION_COL] as string | null) ?? undefined,
+  status: (r[STATUS_COL] as RequestStatus) ?? 'pending',
+  requesterId: r[REQUESTERID_COL] as string,
+  requesterName: (r[REQUESTERNAME_COL] as string) ?? '',
+  approverName: (r[APPROVERNAME_COL] as string | null) ?? undefined,
+  amount: (r[AMOUNT_COL] as number | null) ?? undefined,
+  startDate: (r[STARTDATE_COL] as string | null) ?? undefined,
+  endDate: (r[ENDDATE_COL] as string | null) ?? undefined,
+  createdDateTime: (r.createdon as string) ?? '',
+  updatedDateTime: (r.modifiedon as string) ?? '',
 });
 
-const SELECT =
-  '$select=flowtech_requestid,flowtech_type,flowtech_title,flowtech_description,flowtech_status,flowtech_requesterid,flowtech_requestername,flowtech_approvername,flowtech_amount,flowtech_startdate,flowtech_enddate,createdon,modifiedon';
-
-export async function dvListRequestsFor(auth: AuthContext, requesterId: string): Promise<ApprovalRequest[]> {
-  const client = dataverseClientFor(auth.getDataverseToken);
-  const url = `/${TABLE}?${SELECT}&$filter=flowtech_requesterid eq '${requesterId}'&$orderby=createdon desc`;
-  const { data } = await client.get(url);
+export async function dvListRequestsFor(requesterId: string): Promise<ApprovalRequest[]> {
+  const url = `/${TABLE}?${SELECT}&$filter=${REQUESTERID_COL} eq '${requesterId}'&$orderby=createdon desc`;
+  const { data } = await client().get(url);
   return (data.value as DvRow[]).map(toDto);
 }
 
-export async function dvListPendingApprovals(auth: AuthContext): Promise<ApprovalRequest[]> {
-  const client = dataverseClientFor(auth.getDataverseToken);
-  const url = `/${TABLE}?${SELECT}&$filter=flowtech_status eq ${STATUS_TO_CODE.pending}&$orderby=createdon desc`;
-  const { data } = await client.get(url);
+export async function dvListPendingApprovals(): Promise<ApprovalRequest[]> {
+  const url = `/${TABLE}?${SELECT}&$filter=${STATUS_COL} eq 'pending'&$orderby=createdon desc`;
+  const { data } = await client().get(url);
   return (data.value as DvRow[]).map(toDto);
 }
 
-export async function dvCreateRequest(
-  auth: AuthContext,
-  input: {
-    type: RequestType;
-    title: string;
-    description?: string;
-    requesterId: string;
-    requesterName: string;
-    amount?: number;
-    startDate?: string;
-    endDate?: string;
-  },
-): Promise<ApprovalRequest> {
-  const client = dataverseClientFor(auth.getDataverseToken);
-  const body = {
-    flowtech_type: input.type,
-    flowtech_title: input.title,
-    flowtech_description: input.description,
-    flowtech_status: STATUS_TO_CODE.pending,
-    flowtech_requesterid: input.requesterId,
-    flowtech_requestername: input.requesterName,
-    flowtech_amount: input.amount,
-    flowtech_startdate: input.startDate,
-    flowtech_enddate: input.endDate,
+/** Admin, team-wide — every request regardless of requester or status. */
+export async function dvListAllRequests(): Promise<ApprovalRequest[]> {
+  const url = `/${TABLE}?${SELECT}&$orderby=createdon desc`;
+  const { data } = await client().get(url);
+  return (data.value as DvRow[]).map(toDto);
+}
+
+export async function dvCreateRequest(input: {
+  type: RequestType;
+  title: string;
+  description?: string;
+  requesterId: string;
+  requesterName: string;
+  amount?: number;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ApprovalRequest> {
+  const row: Record<string, unknown> = {
+    [TYPE_COL]: input.type,
+    [TITLE_COL]: input.title,
+    [DESCRIPTION_COL]: input.description,
+    [STATUS_COL]: 'pending',
+    [REQUESTERID_COL]: input.requesterId,
+    [REQUESTERNAME_COL]: input.requesterName,
+    [AMOUNT_COL]: input.amount,
+    [STARTDATE_COL]: input.startDate,
+    [ENDDATE_COL]: input.endDate,
   };
-  const { data } = await client.post(`/${TABLE}`, body);
+  const { data } = await client().post(`/${TABLE}`, row);
   return toDto(data as DvRow);
 }
 
-export async function dvSetStatus(
-  auth: AuthContext,
-  id: string,
-  status: RequestStatus,
-  approverName?: string,
-): Promise<ApprovalRequest> {
-  const client = dataverseClientFor(auth.getDataverseToken);
-  const body: Record<string, unknown> = { flowtech_status: STATUS_TO_CODE[status] };
-  if (approverName) body.flowtech_approvername = approverName;
-  const { data } = await client.patch(`/${TABLE}(${id})`, body);
+export async function dvSetStatus(id: string, status: RequestStatus, approverName?: string): Promise<ApprovalRequest> {
+  const row: Record<string, unknown> = { [STATUS_COL]: status };
+  if (approverName) row[APPROVERNAME_COL] = approverName;
+  const { data } = await client().patch(`/${TABLE}(${id})`, row);
   return toDto(data as DvRow);
 }

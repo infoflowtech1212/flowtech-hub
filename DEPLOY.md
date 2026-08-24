@@ -99,7 +99,7 @@ docker compose up -d --build
 ## Notes / limits (current build)
 - **Single instance.** Auth/sessions persist (volume); most feature data
   (tickets, expenses, notes, vault PIN, company events, menu order, uploaded
-  logos/banners) is **in-memory** and resets on `--build` redeploy. Vault text is
+  logos/banners, attendance records) is **in-memory** and resets on `--build` redeploy. Vault text is
   already wired to Dataverse; the rest can be on request. Don't run >1 replica yet.
 - **Uploads:** the app caps images ~8 MB; the proxy must allow a large body
   (`client_max_body_size 12m` for Nginx / `LimitRequestBody` for Apache) — already

@@ -3,7 +3,7 @@ import { config, USE_MOCKS } from '../config.js';
 import { logger } from '../logger.js';
 import { acquireGraphToken } from './tokens.js';
 import { checkAdminGroup, checkDirectoryAdmin } from '../graph/me.js';
-import { cryptoProvider, getMsalClient } from './msal.js';
+import { cryptoProvider, getMsalClient, withMsalCacheLock } from './msal.js';
 import {
   clearOAuthCookie,
   createSession,
@@ -68,12 +68,14 @@ authRouter.get('/redirect', async (req, res, next) => {
     }
 
     const cca = getMsalClient();
-    const result = await cca.acquireTokenByCode({
-      code: req.query.code,
-      scopes: config.graph.scopes,
-      redirectUri: config.azure.redirectUri,
-      codeVerifier: oauth.pkceVerifier,
-    });
+    const result = await withMsalCacheLock(() =>
+      cca.acquireTokenByCode({
+        code: req.query.code as string,
+        scopes: config.graph.scopes,
+        redirectUri: config.azure.redirectUri,
+        codeVerifier: oauth.pkceVerifier,
+      }),
+    );
 
     if (!result.account) {
       return res.redirect(`${config.webOrigin}/?authError=account`);
@@ -94,8 +96,10 @@ authRouter.get('/redirect', async (req, res, next) => {
         logger.warn({ email }, 'sign-in blocked: email domain not allowed');
         // Drop the account from the token cache so it doesn't linger.
         try {
-          const acct = await cca.getTokenCache().getAccountByHomeId(homeAccountId);
-          if (acct) await cca.getTokenCache().removeAccount(acct);
+          await withMsalCacheLock(async () => {
+            const acct = await cca.getTokenCache().getAccountByHomeId(homeAccountId);
+            if (acct) await cca.getTokenCache().removeAccount(acct);
+          });
         } catch {
           /* best-effort */
         }
@@ -128,8 +132,10 @@ authRouter.post('/logout', async (req, res, next) => {
     const session = getSession(req);
     if (session) {
       const cca = getMsalClient();
-      const account = await cca.getTokenCache().getAccountByHomeId(session.homeAccountId);
-      if (account) await cca.getTokenCache().removeAccount(account);
+      await withMsalCacheLock(async () => {
+        const account = await cca.getTokenCache().getAccountByHomeId(session.homeAccountId);
+        if (account) await cca.getTokenCache().removeAccount(account);
+      });
     }
     destroySession(req, res);
     res.json({

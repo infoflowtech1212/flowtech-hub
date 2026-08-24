@@ -152,21 +152,22 @@ export function useQuickNoteMutations() {
   };
 }
 
-// ---- Vault PIN (second security layer) ------------------------------------
-export const useVaultPinStatus = () =>
-  useQuery({ queryKey: ['vault-pin'], queryFn: () => api.get<{ isSet: boolean }>('/vault-pin') });
+// ---- Vault PIN (second security layer, independent per vault) -------------
+export const useVaultPinStatus = (scope: VaultScope) =>
+  useQuery({ queryKey: ['vault-pin', scope], queryFn: () => api.get<{ isSet: boolean }>(`/vault-pin/${scope}`) });
 
-export function useSetVaultPin() {
+export function useSetVaultPin(scope: VaultScope) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { pin: string; currentPin?: string }) => api.post<{ ok: boolean; isSet: boolean }>('/vault-pin', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['vault-pin'] }),
+    mutationFn: (body: { pin: string; currentPin?: string }) =>
+      api.post<{ ok: boolean; isSet: boolean }>(`/vault-pin/${scope}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['vault-pin', scope] }),
   });
 }
 
-export function useVerifyVaultPin() {
+export function useVerifyVaultPin(scope: VaultScope) {
   return useMutation({
-    mutationFn: (pin: string) => api.post<{ ok: boolean }>('/vault-pin/verify', { pin }),
+    mutationFn: (pin: string) => api.post<{ ok: boolean }>(`/vault-pin/${scope}/verify`, { pin }),
   });
 }
 
@@ -188,6 +189,21 @@ export function useVaultMutations(scope: VaultScope) {
         scope: VaultScope;
         secret?: string;
       }) => api.post<VaultEntry>('/vault', body),
+      onSuccess: invalidate,
+    }),
+    update: useMutation({
+      mutationFn: ({
+        id,
+        ...body
+      }: {
+        id: string;
+        title?: string;
+        username?: string;
+        url?: string;
+        notes?: string;
+        category?: string;
+        secret?: string;
+      }) => api.put<VaultEntry>(`/vault/${scope}/${id}`, body),
       onSuccess: invalidate,
     }),
     remove: useMutation({

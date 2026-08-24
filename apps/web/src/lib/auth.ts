@@ -10,14 +10,12 @@ export function login(returnTo: string = window.location.pathname): void {
   window.location.href = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
-/** Clear the BFF session, then optionally end the Entra SSO session too. */
+/** Clear the BFF session only — leaves the user's Microsoft 365 SSO session intact. */
 export async function logout(): Promise<void> {
   try {
-    const res = await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
-    const body = (await res.json().catch(() => ({}))) as { logoutUrl?: string };
-    // The strict session cookie already protects logout from cross-site abuse.
-    window.location.href = body.logoutUrl ?? '/';
+    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
   } catch {
-    window.location.href = '/'; // hard reset regardless
+    /* fall through to hard reset regardless */
   }
+  window.location.href = '/';
 }

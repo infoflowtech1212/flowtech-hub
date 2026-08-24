@@ -14,6 +14,7 @@ import { authRouter } from './auth/routes.js';
 import { flowsRouter } from './flows/routes.js';
 import { publicRouter } from './routes/public.js';
 import { csrfProtection, requireAuth } from './auth/middleware.js';
+import { hydrateGrantsFromDataverse, hydrateRolesFromDataverse } from './auth/permissions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -152,14 +153,28 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   });
 });
 
-app.listen(config.port, () => {
-  logger.info(
-    { port: config.port, mode: USE_MOCKS ? 'MOCK (tenant not wired)' : 'LIVE', webOrigin: config.webOrigin },
-    `FlowTech Hub BFF listening on http://localhost:${config.port}`,
-  );
-  if (USE_MOCKS) {
-    logger.warn(
-      'Running with MOCK data. Fill AZURE_CLIENT_ID / AZURE_CLIENT_SECRET in .env and wire auth (Build Order step 2) to go live.',
-    );
-  }
-});
+// Roles/assignments and document-access grants are also hot-path in-memory
+// caches (every authenticated request reads them) — reload the last-persisted
+// state from Dataverse before accepting traffic, so a restart doesn't reset
+// custom roles/grants to nothing.
+Promise.all([
+  hydrateRolesFromDataverse().catch((err) =>
+    logger.error({ err }, 'failed to hydrate roles from Dataverse — starting with seed roles'),
+  ),
+  hydrateGrantsFromDataverse().catch((err) =>
+    logger.error({ err }, 'failed to hydrate document-access grants from Dataverse — starting with none'),
+  ),
+])
+  .finally(() => {
+    app.listen(config.port, () => {
+      logger.info(
+        { port: config.port, mode: USE_MOCKS ? 'MOCK (tenant not wired)' : 'LIVE', webOrigin: config.webOrigin },
+        `FlowTech Hub BFF listening on http://localhost:${config.port}`,
+      );
+      if (USE_MOCKS) {
+        logger.warn(
+          'Running with MOCK data. Fill AZURE_CLIENT_ID / AZURE_CLIENT_SECRET in .env and wire auth (Build Order step 2) to go live.',
+        );
+      }
+    });
+  });

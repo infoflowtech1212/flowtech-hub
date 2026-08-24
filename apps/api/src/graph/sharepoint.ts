@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { DocumentItem, Paged } from '@flowtech/shared';
+import type { DocumentItem, LibraryScope, Paged } from '@flowtech/shared';
 import { config } from '../config.js';
 import { TtlCache } from '../lib/cache.js';
 import type { AuthContext } from '../auth/middleware.js';
@@ -31,7 +31,7 @@ const driveCache = new TtlCache<DriveRef>(60 * 60 * 1000);
 
 /** A document library connected via the in-app picker (admin-selected). */
 export interface LibraryConnection {
-  scope: 'documents' | 'clientdocs';
+  scope: LibraryScope;
   siteId: string;
   siteName: string;
   driveId: string;
@@ -56,7 +56,7 @@ function persistConnections() {
     /* best-effort */
   }
 }
-export const getConnection = (scope: 'documents' | 'clientdocs') => connections.get(scope) ?? null;
+export const getConnection = (scope: LibraryScope) => connections.get(scope) ?? null;
 export const setConnection = (c: LibraryConnection) => {
   connections.set(c.scope, c);
   persistConnections();
@@ -65,7 +65,7 @@ export const setConnection = (c: LibraryConnection) => {
 // Pinned/fixed libraries resolved by name so the Document Center "just works"
 // without anyone using the picker. Override the names via env if the SharePoint
 // setup differs. `null` disables pinning for that scope (picker required).
-const FIXED_LIBRARY: Record<'documents' | 'clientdocs', { siteName: string; libraryName: string } | null> = {
+const FIXED_LIBRARY: Record<LibraryScope, { siteName: string; libraryName: string } | null> = {
   documents: {
     siteName: process.env.DOC_SITE_NAME || 'FlowTech',
     libraryName: process.env.DOC_LIBRARY_NAME || 'FlowTech Internal',
@@ -74,9 +74,13 @@ const FIXED_LIBRARY: Record<'documents' | 'clientdocs', { siteName: string; libr
     siteName: process.env.CLIENTDOC_SITE_NAME || 'FlowTech',
     libraryName: process.env.CLIENTDOC_LIBRARY_NAME || 'Client Access',
   },
+  courses: {
+    siteName: process.env.COURSES_SITE_NAME || 'FlowTech',
+    libraryName: process.env.COURSES_LIBRARY_NAME || 'Courses',
+  },
 };
 
-export const isFixedLibrary = (scope: 'documents' | 'clientdocs') => FIXED_LIBRARY[scope] !== null;
+export const isFixedLibrary = (scope: LibraryScope) => FIXED_LIBRARY[scope] !== null;
 
 /**
  * Ensure a library is connected for a scope: returns an admin-picked connection
@@ -86,7 +90,7 @@ export const isFixedLibrary = (scope: 'documents' | 'clientdocs') => FIXED_LIBRA
  */
 export async function ensureConnection(
   auth: AuthContext,
-  scope: 'documents' | 'clientdocs',
+  scope: LibraryScope,
 ): Promise<LibraryConnection | null> {
   const existing = getConnection(scope);
   if (existing) return existing;
@@ -157,7 +161,7 @@ export async function listLibraries(auth: AuthContext, siteId: string) {
  */
 export async function resolveDrive(
   auth: AuthContext,
-  scope: 'documents' | 'clientdocs' = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<DriveRef> {
   const conn = getConnection(scope);
   if (conn) return { siteId: conn.siteId, driveId: conn.driveId };
@@ -207,14 +211,13 @@ const CHILD_SELECT = [
   'parentReference',
 ];
 
-type LibScope = 'documents' | 'clientdocs';
 
 /** List folders + files at a library path ('' or '/' = root). Folders first. */
 export async function listChildren(
   auth: AuthContext,
   path = '',
   cursor?: string,
-  scope: LibScope = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<Paged<DocumentItem>> {
   const client = graphClientFor(auth.getGraphToken);
   if (cursor) {
@@ -238,7 +241,7 @@ export async function listChildren(
 export async function searchDocuments(
   auth: AuthContext,
   q: string,
-  scope: LibScope = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<Paged<DocumentItem>> {
   const client = graphClientFor(auth.getGraphToken);
   const { driveId } = await resolveDrive(auth, scope);
@@ -255,7 +258,7 @@ export async function uploadFile(
   path: string,
   filename: string,
   content: Buffer,
-  scope: LibScope = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<DocumentItem> {
   const client = graphClientFor(auth.getGraphToken);
   const { driveId } = await resolveDrive(auth, scope);
@@ -276,7 +279,7 @@ export async function createShareLink(
   auth: AuthContext,
   itemId: string,
   opts: { type?: 'view' | 'edit'; scope?: 'organization' | 'anonymous' } = {},
-  scope: LibScope = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<{ webUrl: string; name: string }> {
   const client = graphClientFor(auth.getGraphToken);
   const { driveId } = await resolveDrive(auth, scope);
@@ -292,7 +295,7 @@ export async function createShareLink(
 export async function downloadFile(
   auth: AuthContext,
   itemId: string,
-  scope: LibScope = 'documents',
+  scope: LibraryScope = 'documents',
 ): Promise<{ stream: NodeJS.ReadableStream; name: string; mimeType?: string }> {
   const client = graphClientFor(auth.getGraphToken);
   const { driveId } = await resolveDrive(auth, scope);

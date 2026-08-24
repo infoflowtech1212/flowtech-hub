@@ -5,12 +5,15 @@ import { useAdminQuickLinks, useSaveQuickLinks } from '@/hooks/useAdmin';
 import { PageHeader, SectionCard } from '@/components/ui/Page';
 import { ErrorState, Skeleton } from '@/components/ui/states';
 import { fileToDataUri } from '@/lib/image';
+import { ApiRequestError } from '@/lib/api';
 
 export default function AdminQuickLinks() {
   const { data, isLoading, isError, refetch } = useAdminQuickLinks();
   const save = useSaveQuickLinks();
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [saved, setSaved] = useState(false);
+  const [confirmDrop, setConfirmDrop] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.items) setLinks(data.items);
@@ -25,10 +28,25 @@ export default function AdminQuickLinks() {
   const add = () =>
     setLinks((prev) => [...prev, { id: '', label: '', url: 'https://', category: '' }]);
 
-  async function persist() {
+  async function persist(force = false) {
     setSaved(false);
-    await save.mutateAsync(links.filter((l) => l.label && l.url));
-    setSaved(true);
+    setError(null);
+    setConfirmDrop(null);
+    try {
+      await save.mutateAsync({ items: links.filter((l) => l.label && l.url), force });
+      setSaved(true);
+    } catch (e) {
+      if (e instanceof ApiRequestError && e.code === 'confirm_required') {
+        setConfirmDrop(e.message);
+      } else {
+        setError(e instanceof Error ? e.message : 'Save failed.');
+      }
+    }
+  }
+
+  async function reloadCurrentList() {
+    setConfirmDrop(null);
+    await refetch();
   }
 
   return (
@@ -37,7 +55,7 @@ export default function AdminQuickLinks() {
         title="Quick links"
         subtitle="Shortcuts shown on every employee's dashboard."
         actions={
-          <button className="ft-btn-primary" onClick={persist} disabled={save.isPending}>
+          <button className="ft-btn-primary" onClick={() => persist()} disabled={save.isPending}>
             <Save className="h-4 w-4" /> {save.isPending ? 'Saving…' : 'Save'}
           </button>
         }
@@ -46,6 +64,20 @@ export default function AdminQuickLinks() {
       <SectionCard>
         {saved && !save.isPending && (
           <p className="mb-3 rounded-lg bg-success/10 px-3 py-2 text-xs text-success">Quick links saved.</p>
+        )}
+        {error && <p className="mb-3 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{error}</p>}
+        {confirmDrop && (
+          <div className="mb-3 space-y-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-content">
+            <p>{confirmDrop}</p>
+            <div className="flex gap-2">
+              <button className="ft-btn-ghost" onClick={reloadCurrentList}>
+                Reload current list
+              </button>
+              <button className="ft-btn-primary" onClick={() => persist(true)} disabled={save.isPending}>
+                Save anyway
+              </button>
+            </div>
+          </div>
         )}
         <div className="space-y-2">
           {links.map((l, i) => (

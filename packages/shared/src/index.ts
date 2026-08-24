@@ -80,12 +80,17 @@ export type Capability =
   | 'legal.manage'
   | 'clientdocs.view'
   | 'clientdocs.manage'
+  | 'courses.view'
+  | 'courses.upload'
+  | 'courses.share'
   | 'vault.view'
   | 'vault.manage'
   | 'expenses.view'
   | 'expenses.manage'
   | 'notes.view'
   | 'holidays.manage'
+  | 'attendance.view'
+  | 'attendance.manage'
   // Admin console
   | 'admin.access'
   | 'admin.roles.manage'
@@ -172,6 +177,9 @@ export interface OrgChart {
 // Document center  (GET /api/documents, POST /api/documents)
 // ---------------------------------------------------------------------------
 
+/** Which SharePoint-library-backed document surface a request targets. */
+export type LibraryScope = 'documents' | 'clientdocs' | 'courses';
+
 export interface DocumentItem {
   id: string;
   name: string;
@@ -251,6 +259,51 @@ export interface ApprovalRequest {
   endDate?: string; // leave
   createdDateTime: string;
   updatedDateTime: string;
+}
+
+// ---------------------------------------------------------------------------
+// Attendance  (GET/POST /api/attendance, GET /api/admin/attendance)
+// ---------------------------------------------------------------------------
+
+/** Computed/display-only status for a calendar day cell — never persisted. */
+export type AttendanceDayStatus = 'present' | 'absent' | 'weekend' | 'holiday';
+
+/** One employee's punch-in/punch-out cycle for a single calendar day. */
+export interface AttendanceRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  /** YYYY-MM-DD, server-local date the shift started. */
+  date: string;
+  checkIn: string; // ISO 8601
+  checkOut: string | null; // null while still punched in
+  /** A record only exists once punched in, so this is always 'present'. */
+  status: 'present';
+  completedTasks: string[];
+  tomorrowsPlan: string;
+  blockers?: string;
+  createdDateTime: string;
+  updatedDateTime: string;
+}
+
+/** Today's punch state for the current user — drives the punch card. */
+export interface AttendanceToday {
+  record: AttendanceRecord | null;
+  state: 'working' | 'not-checked-in' | 'done';
+}
+
+/** One calendar cell for the month view. */
+export interface AttendanceDaySummary {
+  date: string; // YYYY-MM-DD
+  status: AttendanceDayStatus;
+}
+
+/** Admin "who's working right now" row. */
+export interface AttendanceLiveEntry {
+  userId: string;
+  userName: string;
+  checkIn: string;
+  elapsedMinutes: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -111,7 +111,7 @@ function AnnouncementForm({
     if (!file) return;
     setError(null);
     try {
-      setImageUrl(await fileToDataUri(file, 1200, 0.82)); // banner-sized
+      setImageUrl(await fileToDataUri(file, 800, 0.7)); // banner-sized, kept small for the Dataverse text column
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that image.');
     } finally {
@@ -181,12 +181,16 @@ function AnnouncementForm({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <input
+          <select
             className="ft-input max-w-[200px]"
-            placeholder="Category (optional)"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-          />
+          >
+            <option value="">No category</option>
+            <option value="Company">Company</option>
+            <option value="Product">Product</option>
+            <option value="Operations">Operations</option>
+          </select>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-content">
             <input
               type="checkbox"

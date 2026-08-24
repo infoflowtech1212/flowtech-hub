@@ -1,4 +1,10 @@
-import type { Capability, CapabilityInfo, Role } from '@flowtech/shared';
+import { randomUUID } from 'node:crypto';
+import type { Capability, Role } from '@flowtech/shared';
+import { ALL_CAPABILITIES, ADMIN_ROLE_ID, DEFAULT_ROLE_ID, seedRoles } from './capabilities.js';
+import { dvListAllAssignments, dvListRoles, rolesDataverseEnabled } from '../dataverse/roles.js';
+import { dvListAllGrants, grantsDataverseEnabled } from '../dataverse/grants.js';
+
+export { CAPABILITY_CATALOG, ALL_CAPABILITIES, DEFAULT_ROLE_ID, ADMIN_ROLE_ID } from './capabilities.js';
 
 /**
  * Authorization catalog + store.
@@ -8,112 +14,36 @@ import type { Capability, CapabilityInfo, Role } from '@flowtech/shared';
  * Everyone else's access is the union of the capabilities of the app-managed
  * roles assigned to them here.
  *
- * Persistence: in-memory for dev so the whole thing is demoable and admin edits
- * stick for the session. TODO(prod): back `roleStore` and `assignmentStore`
- * with Dataverse tables (Roles, RoleAssignments) — the function surface below is
- * the seam to swap.
+ * Persistence: `roleStore`/`assignmentStore` below are also the hot-path cache
+ * that every authenticated request reads via resolveCapabilities() (see
+ * auth/middleware.ts), so they stay in-memory and synchronous even when
+ * Dataverse is configured — Dataverse per-request would add real latency to
+ * every request just to check permissions. Instead: dataverse/roles.ts is the
+ * durable source of truth, hydrateRolesFromDataverse() loads it into this
+ * cache once at boot, and routes/admin.ts mirrors every admin write here too
+ * (via createRole/replaceRoleInStore/deleteRole/setAssignedRoleIds) so a
+ * change still takes effect immediately in the current process, exactly as it
+ * did when this was purely in-memory.
  */
 
-// --- Capability catalog (drives the admin role editor) ---------------------
-export const CAPABILITY_CATALOG: CapabilityInfo[] = [
-  { key: 'directory.view', group: 'Directory', label: 'View directory', description: 'Browse people and org chart.' },
-  { key: 'documents.view', group: 'Documents', label: 'View documents', description: 'Browse the document library.' },
-  { key: 'documents.upload', group: 'Documents', label: 'Upload documents', description: 'Add files to the library.' },
-  { key: 'documents.delete', group: 'Documents', label: 'Delete documents', description: 'Remove files from the library.' },
-  { key: 'documents.share', group: 'Documents', label: 'Share documents', description: 'Create shareable links to files.' },
-  { key: 'calendar.view', group: 'Calendar', label: 'View calendar', description: 'See company + personal events.' },
-  { key: 'requests.view', group: 'Requests', label: 'View requests', description: 'See own requests.' },
-  { key: 'requests.create', group: 'Requests', label: 'Create requests', description: 'Submit leave/expense/doc requests.' },
-  { key: 'requests.approve', group: 'Requests', label: 'Approve requests', description: 'Approve or reject requests.' },
-  { key: 'announcements.view', group: 'News', label: 'View announcements', description: 'Read company news.' },
-  { key: 'announcements.manage', group: 'News', label: 'Manage announcements', description: 'Author and edit company news.' },
-  { key: 'notifications.view', group: 'Notifications', label: 'View notifications', description: 'See the notification center.' },
-  { key: 'assets.view', group: 'Assets', label: 'View assets', description: 'Browse the asset tracker.' },
-  { key: 'assets.manage', group: 'Assets', label: 'Manage assets', description: 'Add and edit tracked assets.' },
-  { key: 'projects.view', group: 'Projects', label: 'View projects', description: 'See project workstreams.' },
-  { key: 'projects.manage', group: 'Projects', label: 'Manage projects', description: 'Create and edit projects.' },
-  { key: 'helpdesk.view', group: 'Help Desk', label: 'View help desk', description: 'See and submit tickets.' },
-  { key: 'helpdesk.manage', group: 'Help Desk', label: 'Manage help desk', description: 'Triage and resolve tickets.' },
-  { key: 'legal.view', group: 'Legal', label: 'View legal', description: 'Browse the legal register.' },
-  { key: 'legal.manage', group: 'Legal', label: 'Manage legal', description: 'Add and edit legal documents.' },
-  { key: 'clientdocs.view', group: 'Client', label: 'View client documents', description: 'Browse client documents.' },
-  { key: 'clientdocs.manage', group: 'Client', label: 'Manage client documents', description: 'Upload client documents.' },
-  { key: 'vault.view', group: 'Password Vault', label: 'Use password vault', description: 'Access personal + permitted shared entries.' },
-  { key: 'vault.manage', group: 'Password Vault', label: 'Manage shared vault', description: 'Add/edit shared (open) vault entries.' },
-  { key: 'expenses.view', group: 'Expenses', label: 'View expenses', description: 'See the company expense tracker.' },
-  { key: 'expenses.manage', group: 'Expenses', label: 'Manage expenses', description: 'Add and edit expense lines.' },
-  { key: 'notes.view', group: 'Admin Notes', label: 'Admin notes & ideas', description: 'Read and post private admin-only notes.' },
-  { key: 'holidays.manage', group: 'Calendar', label: 'Manage company holidays', description: 'Add/remove company holidays shown on everyone\'s calendar.' },
-  { key: 'admin.access', group: 'Admin', label: 'Access admin portal', description: 'Open the admin console.' },
-  { key: 'admin.roles.manage', group: 'Admin', label: 'Manage roles', description: 'Create/edit roles and assignments.' },
-  { key: 'admin.users.manage', group: 'Admin', label: 'Manage people access', description: 'Assign roles to employees.' },
-  { key: 'admin.content.manage', group: 'Admin', label: 'Manage content', description: 'Announcements, quick links, request types.' },
-  { key: 'admin.settings.manage', group: 'Admin', label: 'Manage settings', description: 'Configure the Hub.' },
-];
-
-export const ALL_CAPABILITIES: Capability[] = CAPABILITY_CATALOG.map((c) => c.key);
-
-const EMPLOYEE_CAPS: Capability[] = [
-  'directory.view',
-  'documents.view',
-  'documents.upload',
-  'calendar.view',
-  'requests.view',
-  'requests.create',
-  'announcements.view',
-  'notifications.view',
-  'assets.view',
-  'projects.view',
-  'helpdesk.view',
-  'legal.view',
-  // clientdocs.view is intentionally NOT in the baseline — client documents are
-  // access-controlled: admins grant clientdocs.view per person (Document Access).
-  'vault.view',
-];
-
-// --- Seed roles ------------------------------------------------------------
-const seedRoles = (): Role[] => [
-  {
-    id: 'role-employee',
-    name: 'Employee',
-    description: 'Default access for all staff.',
-    system: true,
-    capabilities: [...EMPLOYEE_CAPS],
-  },
-  {
-    id: 'role-manager',
-    name: 'Manager',
-    description: 'Employee access plus approvals.',
-    system: false,
-    capabilities: [...EMPLOYEE_CAPS, 'requests.approve'],
-  },
-  {
-    id: 'role-admin',
-    name: 'Administrator',
-    description: 'Full access, including the admin portal.',
-    system: true,
-    capabilities: [...ALL_CAPABILITIES],
-  },
-];
-
-// In-memory stores (dev). userId -> roleIds.
+// In-memory stores — hot-path cache for resolveCapabilities(), and the
+// complete store when Dataverse isn't configured.
 let roleStore: Role[] = seedRoles();
 const assignmentStore = new Map<string, string[]>();
 // Per-user capability grants layered ON TOP of roles (e.g. document access
 // control). userId -> extra capabilities. TODO(prod): Dataverse.
 const grantStore = new Map<string, Capability[]>();
 
-/** The role every authenticated user gets implicitly. */
-export const DEFAULT_ROLE_ID = 'role-employee';
-export const ADMIN_ROLE_ID = 'role-admin';
-
 // --- Role CRUD -------------------------------------------------------------
 export const listRoles = (): Role[] => roleStore.map((r) => ({ ...r }));
 export const getRole = (id: string): Role | undefined => roleStore.find((r) => r.id === id);
 
-export function createRole(input: { name: string; description?: string; capabilities: Capability[] }): Role {
+export function createRole(
+  input: { name: string; description?: string; capabilities: Capability[] },
+  forcedId?: string,
+): Role {
   const role: Role = {
-    id: `role-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${roleStore.length + 1}`,
+    id: forcedId ?? `role-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${randomUUID().slice(0, 6)}`,
     name: input.name,
     description: input.description,
     capabilities: input.capabilities.filter((c) => ALL_CAPABILITIES.includes(c)),
@@ -136,6 +66,27 @@ export function updateRole(id: string, patch: Partial<Pick<Role, 'name' | 'descr
   return { ...role };
 }
 
+/** Upserts a full Role object into the cache — used to mirror a Dataverse write exactly, without recomputing guards a second time. */
+export function replaceRoleInStore(role: Role): void {
+  const i = roleStore.findIndex((r) => r.id === role.id);
+  if (i >= 0) roleStore[i] = role;
+  else roleStore.push(role);
+}
+
+/**
+ * Replaces the whole cache with a fresh Dataverse read. Roles created
+ * directly in Dataverse (not through this app's "New role") are otherwise
+ * invisible to this cache until the next restart — including to
+ * setAssignedRoleIds()'s validation, which would silently drop an
+ * assignment to such a role. Routes that already do a fresh dvListRoles()
+ * read for their own response (GET /roles, GET /people) call this to heal
+ * the cache opportunistically, without adding a Dataverse call to the
+ * request-authorization hot path.
+ */
+export function replaceAllRolesInStore(roles: Role[]): void {
+  roleStore = roles.map((r) => ({ ...r }));
+}
+
 export function deleteRole(id: string): boolean {
   const role = roleStore.find((r) => r.id === id);
   if (!role || role.system) return false; // system roles are protected
@@ -149,10 +100,26 @@ export function deleteRole(id: string): boolean {
 // --- Assignments -----------------------------------------------------------
 export const getAssignedRoleIds = (userId: string): string[] => assignmentStore.get(userId) ?? [];
 
+/** Same idea as replaceAllRolesInStore(), for the assignment side of the cache. */
+export function replaceAllAssignmentsInStore(assignments: Map<string, string[]>): void {
+  assignmentStore.clear();
+  for (const [userId, roleIds] of assignments) assignmentStore.set(userId, roleIds);
+}
+
 export function setAssignedRoleIds(userId: string, roleIds: string[]): string[] {
   const valid = roleIds.filter((id) => roleStore.some((r) => r.id === id));
   assignmentStore.set(userId, valid);
   return valid;
+}
+
+// --- Boot-time hydration (Dataverse -> hot-path cache) ----------------------
+/** Loads the last-persisted roles/assignments into the in-memory cache. No-op if Dataverse isn't configured. */
+export async function hydrateRolesFromDataverse(): Promise<void> {
+  if (!rolesDataverseEnabled()) return;
+  const [roles, assignments] = await Promise.all([dvListRoles(), dvListAllAssignments()]);
+  roleStore = roles;
+  assignmentStore.clear();
+  for (const [userId, roleIds] of assignments) assignmentStore.set(userId, roleIds);
 }
 
 // --- Per-user capability grants (additive) ---------------------------------
@@ -162,6 +129,19 @@ export function setUserGrants(userId: string, caps: Capability[]): Capability[] 
   const valid = caps.filter((c) => ALL_CAPABILITIES.includes(c));
   grantStore.set(userId, valid);
   return valid;
+}
+
+/** Same idea as replaceAllAssignmentsInStore(), for grants — heals the cache if a grant was set directly in Dataverse. */
+export function replaceAllGrantsInStore(grants: Map<string, Capability[]>): void {
+  grantStore.clear();
+  for (const [userId, caps] of grants) grantStore.set(userId, caps);
+}
+
+/** Loads the last-persisted grants into the in-memory cache. No-op if Dataverse isn't configured. */
+export async function hydrateGrantsFromDataverse(): Promise<void> {
+  if (!grantsDataverseEnabled()) return;
+  const grants = await dvListAllGrants();
+  replaceAllGrantsInStore(grants);
 }
 
 // --- Effective capability resolution ---------------------------------------

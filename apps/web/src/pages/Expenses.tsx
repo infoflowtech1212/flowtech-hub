@@ -40,7 +40,7 @@ const money = (amount: number, currency: string) => {
 export default function Expenses() {
   const { data, isLoading, isError, refetch } = useExpenses();
   const { can } = useCan();
-  const { remove } = useExpenseMutations();
+  const { update, remove } = useExpenseMutations();
   const canManage = can('expenses.manage');
   const [showForm, setShowForm] = useState(false);
 
@@ -124,13 +124,29 @@ export default function Expenses() {
                     <td className="py-2.5 pr-3 text-right font-medium text-content">{money(e.amount, e.currency)}</td>
                     <td className="py-2.5 pr-3 text-muted">{e.recurrence}</td>
                     <td className="py-2.5 pr-3 text-muted">{e.renewalDate ? formatDate(e.renewalDate) : '—'}</td>
-                    <td className="py-2.5 pr-3"><Badge tone={statusTone[e.status]}>{e.status}</Badge></td>
+                    <td className="py-2.5 pr-3">
+                      {canManage ? (
+                        <select
+                          className="ft-input max-w-[110px] py-1 text-xs"
+                          value={e.status}
+                          onChange={(ev) => update.mutate({ id: e.id, status: ev.target.value as ExpenseStatus })}
+                        >
+                          <option value="active">Active</option>
+                          <option value="pending">Pending</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      ) : (
+                        <Badge tone={statusTone[e.status]}>{e.status}</Badge>
+                      )}
+                    </td>
                     {canManage && (
                       <td className="py-2.5 text-right">
                         <button
                           className="ft-btn-ghost px-2 py-1"
                           title="Delete"
-                          onClick={() => remove.mutate(e.id)}
+                          onClick={() => {
+                            if (confirm(`Delete "${e.item}"?`)) remove.mutate(e.id);
+                          }}
                         >
                           <Trash2 className="h-4 w-4 text-danger" />
                         </button>

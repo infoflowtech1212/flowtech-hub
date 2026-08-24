@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, MapPin, PartyPopper, Plus, Video } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, PartyPopper, Plus, Trash2, Video } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { CalendarEvent, Holiday } from '@flowtech/shared';
-import { useCalendar, useCreateEvent, useHolidays } from '@/hooks/useApi';
+import { useCalendar, useCreateEvent, useDeleteEvent, useHolidays } from '@/hooks/useApi';
 import { useCan } from '@/hooks/useCan';
 import { PageHeader, SectionCard } from '@/components/ui/Page';
 import { Badge } from '@/components/ui/Badge';
@@ -461,6 +461,7 @@ function WeekView({
 
 function EventDetail({ event, onClose }: { event: CalendarEvent; onClose: () => void }) {
   const start = new Date(event.start);
+  const del = useDeleteEvent();
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
@@ -499,6 +500,16 @@ function EventDetail({ event, onClose }: { event: CalendarEvent; onClose: () => 
           <a href={event.onlineMeetingUrl} target="_blank" rel="noreferrer" className="ft-btn-primary mt-6 w-full">
             <Video className="h-4 w-4" /> Join online meeting
           </a>
+        )}
+
+        {event.source === 'personal' && (
+          <button
+            className="ft-btn-ghost mt-3 w-full text-danger"
+            disabled={del.isPending}
+            onClick={() => del.mutate(event.id, { onSuccess: onClose })}
+          >
+            <Trash2 className="h-4 w-4" /> {del.isPending ? 'Deleting…' : 'Delete event'}
+          </button>
         )}
       </aside>
     </div>

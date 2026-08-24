@@ -64,6 +64,28 @@ export function createVaultEntry(input: {
   return toDto(entry);
 }
 
+export function updateVaultEntry(
+  id: string,
+  scope: VaultScope,
+  userId: string,
+  updates: { title?: string; username?: string; url?: string; notes?: string; category?: string; secret?: string },
+): VaultEntry | null {
+  const entry = entries.find((e) => e.id === id);
+  if (!entry) return null;
+  if (scope === 'personal' && entry.ownerId !== userId) return null;
+  if (updates.title !== undefined) entry.title = updates.title;
+  if (updates.username !== undefined) entry.username = updates.username;
+  if (updates.url !== undefined) entry.url = updates.url;
+  if (updates.notes !== undefined) entry.notes = updates.notes;
+  if (updates.category !== undefined) entry.category = updates.category;
+  if (updates.secret) {
+    entry._secret = updates.secret;
+    entry.secretSet = true;
+  }
+  entry.updatedDateTime = new Date().toISOString();
+  return toDto(entry);
+}
+
 export function deleteVaultEntry(id: string, scope: VaultScope, userId: string): boolean {
   const entry = entries.find((e) => e.id === id);
   if (!entry) return false;

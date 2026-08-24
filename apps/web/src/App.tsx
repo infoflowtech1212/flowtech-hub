@@ -25,6 +25,9 @@ const Projects = lazy(() => import('@/pages/Projects'));
 const Legal = lazy(() => import('@/pages/Legal'));
 const HelpDesk = lazy(() => import('@/pages/HelpDesk'));
 const ClientDocuments = lazy(() => import('@/pages/ClientDocuments'));
+const Courses = lazy(() => import('@/pages/Courses'));
+const Attendance = lazy(() => import('@/pages/Attendance'));
+const AdminAttendance = lazy(() => import('@/pages/admin/AdminAttendance'));
 const VaultOpen = lazy(() => import('@/pages/VaultOpen'));
 const VaultPersonal = lazy(() => import('@/pages/VaultPersonal'));
 const Expenses = lazy(() => import('@/pages/Expenses'));
@@ -127,6 +130,8 @@ export default function App() {
         <Route path="/legal" element={<RouteFrame><RequireCap capability="legal.view"><Legal /></RequireCap></RouteFrame>} />
         <Route path="/helpdesk" element={<RouteFrame><RequireCap capability="helpdesk.view"><HelpDesk /></RequireCap></RouteFrame>} />
         <Route path="/client-documents" element={<RouteFrame><RequireCap capability="clientdocs.view"><ClientDocuments /></RequireCap></RouteFrame>} />
+        <Route path="/courses" element={<RouteFrame><RequireCap capability="courses.view"><Courses /></RequireCap></RouteFrame>} />
+        <Route path="/attendance" element={<RouteFrame><RequireCap capability="attendance.view"><Attendance /></RequireCap></RouteFrame>} />
         <Route path="/vault/open" element={<RouteFrame><RequireCap capability="vault.view"><VaultOpen /></RequireCap></RouteFrame>} />
         <Route path="/vault/personal" element={<RouteFrame><RequireCap capability="vault.view"><VaultPersonal /></RequireCap></RouteFrame>} />
         <Route path="/app-links" element={<RouteFrame><AppLinks /></RouteFrame>} />
@@ -180,6 +185,10 @@ export default function App() {
         <Route
           path="expenses"
           element={<RouteFrame><RequireCap capability="expenses.view"><Expenses /></RequireCap></RouteFrame>}
+        />
+        <Route
+          path="attendance"
+          element={<RouteFrame><RequireCap capability="attendance.manage"><AdminAttendance /></RequireCap></RouteFrame>}
         />
         <Route
           path="notes"

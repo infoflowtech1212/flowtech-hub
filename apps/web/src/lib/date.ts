@@ -65,3 +65,21 @@ export const weekTitle = (d: Date) => {
 };
 
 export const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** Sunday-based start of week — used by the Attendance calendar (Sun–Sat). */
+export const startOfWeekSunday = (d: Date) => {
+  const x = startOfDay(d);
+  return addDays(x, -x.getDay());
+};
+
+/** The 6x7 grid of days (Sun-first) covering the month that contains `d`. */
+export const monthGridSunday = (d: Date): Date[] => {
+  const first = startOfWeekSunday(startOfMonth(d));
+  return Array.from({ length: 42 }, (_, i) => addDays(first, i));
+};
+
+export const WEEKDAY_LABELS_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Local YYYY-MM-DD — matches the server's date-key convention (not UTC). */
+export const dateKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

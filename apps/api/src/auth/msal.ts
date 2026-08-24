@@ -82,3 +82,24 @@ export function getMsalClient(): ConfidentialClientApplication {
 
 /** PKCE + state generator shared by the login/redirect handlers. */
 export const cryptoProvider = new CryptoProvider();
+
+/**
+ * Serializes every operation that touches the shared MSAL token cache. The
+ * file-based cache plugin above does a full read-deserialize-...-write per
+ * access with no locking, and `cca` is one singleton shared by every user's
+ * requests — concurrent calls (routine: a single page load fires several
+ * parallel /api calls, each acquiring a token) can interleave a read from one
+ * request between another's read and write, silently losing or corrupting
+ * cached accounts/tokens. That produces intermittent auth/Graph failures for
+ * otherwise-valid sessions. This queues cache access process-wide so only one
+ * such operation runs at a time.
+ */
+let cacheLock: Promise<unknown> = Promise.resolve();
+export function withMsalCacheLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = cacheLock.then(fn, fn);
+  cacheLock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
