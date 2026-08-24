@@ -15,7 +15,8 @@ import { createLegal, deleteLegal, listLegal, updateLegal } from '../store/legal
 import { createClientDoc, deleteClientDoc, listClientDocs } from '../store/clientDocs.js';
 import { createVaultEntry, deleteVaultEntry, listVault, updateVaultEntry } from '../store/vault.js';
 import { hasPin, setPin, verifyPin } from '../store/vaultPin.js';
-import { pushNotification } from '../store/notifications.js';
+import { pushBroadcast, pushNotification } from '../store/notifications.js';
+import { usersWithCapability } from '../auth/permissions.js';
 import { createExpense, deleteExpense, listExpenses, updateExpense } from '../store/expenses.js';
 import { createNote, deleteNote, listNotes, updateNote } from '../store/notes.js';
 import { createQuickNote, deleteQuickNote, listQuickNotes, updateQuickNote } from '../store/quickNotes.js';
@@ -174,6 +175,14 @@ intranetRouter.post('/helpdesk/tickets', requireCapability('helpdesk.view'), asy
     const ticket = useLocalTicketStore(req)
       ? createTicket({ ...parsed.data, requesterId: me.id, requesterName: me.name })
       : await dvCreateTicket({ ...parsed.data, requesterId: me.id, requesterName: me.name });
+    for (const agentId of usersWithCapability('helpdesk.manage')) {
+      pushNotification(agentId, {
+        title: 'New Help Desk ticket',
+        body: `${me.name}: "${ticket.subject}"`,
+        kind: 'system',
+        link: '/helpdesk',
+      });
+    }
     res.status(201).json(ticket);
   } catch (err) {
     next(err);
@@ -302,6 +311,18 @@ intranetRouter.get('/vault/:scope', requireCapability('vault.view'), async (req,
   }
 });
 
+// In-app broadcast for a new shared (open) vault entry — used by both the
+// Dataverse and local-store paths above, so this fires regardless of which
+// one is active (the previous behavior only notified via the Power Automate
+// flow, which only ran on the local-store fallback path).
+const notifyOpenVaultEntry = (addedByName: string, title: string) =>
+  pushBroadcast({
+    title: 'New shared vault entry',
+    body: `${addedByName} added "${title}" to the shared vault.`,
+    kind: 'system',
+    link: '/vault/open',
+  });
+
 intranetRouter.post('/vault', requireCapability('vault.view'), async (req, res, next) => {
   const parsed = vaultBody.safeParse(req.body);
   if (!parsed.success) return bad(res, parsed.error.message);
@@ -325,15 +346,17 @@ intranetRouter.post('/vault', requireCapability('vault.view'), async (req, res, 
     if (!useLocalVaultStore(req)) {
       // Dataverse is the source of truth: write there and read the response back.
       const entry = await dvCreateVaultRow(payload);
+      if (parsed.data.scope === 'open') notifyOpenVaultEntry(me.name, parsed.data.title);
       res.status(201).json(entry);
       return;
     }
     const entry = createVaultEntry({ ...parsed.data, ownerId: me.id, ownerName: me.name });
     if (!isMockSession(req) && !vaultDataverseEnabled()) {
-      // No Dataverse table configured: fall back to the Power Automate flow
-      // (Dataverse write + notify) so shared-vault notifications still fire.
+      // No Dataverse table configured: also fire the Power Automate flow
+      // (Dataverse write + external notify), on top of the in-app broadcast below.
       await sendVaultFlow({ ...payload, notify: parsed.data.scope === 'open' });
     }
+    if (parsed.data.scope === 'open') notifyOpenVaultEntry(me.name, parsed.data.title);
     res.status(201).json(entry);
   } catch (err) {
     next(err);

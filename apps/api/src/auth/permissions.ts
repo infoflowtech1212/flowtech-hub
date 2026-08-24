@@ -168,3 +168,20 @@ export function resolveCapabilities(userId: string, isBootstrapAdmin: boolean): 
 
 export const roleNamesFor = (roleIds: string[]): string[] =>
   roleIds.map((id) => getRole(id)?.name).filter((n): n is string => Boolean(n));
+
+/**
+ * Every userId currently holding `cap` via an explicit role assignment —
+ * used to target in-app notifications at whoever handles a given workflow
+ * (e.g. Help Desk agents, request approvers), without needing a Graph
+ * directory call. Only considers people in assignmentStore (i.e. anyone
+ * who's ever had a role assigned beyond the implicit Employee default),
+ * since `cap` is by definition not a baseline capability everyone already
+ * has. Deliberately excludes bootstrap admins (Entra Global Admin / the
+ * ADMIN_EMAILS allowlist) who've never been assigned an app role — a real
+ * gap in edge cases, but resolving that would need a Graph call on every
+ * ticket/request submission, which isn't worth it for a notification nice-
+ * to-have.
+ */
+export function usersWithCapability(cap: Capability): string[] {
+  return [...assignmentStore.keys()].filter((id) => resolveCapabilities(id, false).capabilities.includes(cap));
+}

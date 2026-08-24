@@ -35,7 +35,7 @@ import {
   listCompanyEvents as gListCompanyEvents,
 } from '../graph/calendar.js';
 import { ReauthRequiredError } from '../auth/tokens.js';
-import { roleNamesFor } from '../auth/permissions.js';
+import { roleNamesFor, usersWithCapability } from '../auth/permissions.js';
 import { requireCapability } from '../auth/middleware.js';
 import { adminRouter } from './admin.js';
 import { intranetRouter } from './intranet.js';
@@ -632,6 +632,17 @@ apiRouter.post(
       callbackUrl: `${config.webOrigin.replace(/:\d+$/, '')}:${config.port}/flows/approval-callback`,
       callbackSecret: config.flows.callbackSecret,
     });
+
+    // In-app signal for approvers too — startApprovalFlow only reaches Teams,
+    // and only when FLOW_APPROVAL_URL is configured.
+    for (const approverId of usersWithCapability('requests.approve')) {
+      pushNotification(approverId, {
+        title: 'New request awaiting approval',
+        body: `${created.requesterName}: "${created.title}"`,
+        kind: 'approval',
+        link: '/requests',
+      });
+    }
 
     res.status(201).json(created);
   }),

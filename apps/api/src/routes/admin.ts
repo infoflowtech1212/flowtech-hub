@@ -50,7 +50,7 @@ import {
 } from '../store/content.js';
 import { getProfileSupplement, setProfileSupplement } from '../store/profiles.js';
 import { dvGetProfile, dvSetProfile, profilesDataverseEnabled } from '../dataverse/profiles.js';
-import { pushBroadcast } from '../store/notifications.js';
+import { pushBroadcast, pushNotification } from '../store/notifications.js';
 import { mockDirectory } from '../mocks.js';
 import { dateStr, listAllRecordsFor, listCurrentlyWorking } from '../store/attendance.js';
 import {
@@ -239,7 +239,13 @@ adminRouter.put(
       ? setAssignedRoleIds(req.params.id, parsed.data.roleIds)
       : await dvSetAssignedRoleIds(req.params.id, parsed.data.roleIds);
     if (!useRoleStore(req)) setAssignedRoleIds(req.params.id, roleIds); // mirror into the hot-path cache
-    res.json({ userId: req.params.id, roleIds, roleNames: roleNamesFor(roleIds) });
+    const roleNames = roleNamesFor(roleIds);
+    pushNotification(req.params.id, {
+      title: 'Your role was updated',
+      body: roleNames.length ? `You're now assigned: ${roleNames.join(', ')}.` : 'Your role assignment changed.',
+      kind: 'system',
+    });
+    res.json({ userId: req.params.id, roleIds, roleNames });
   }),
 );
 
@@ -317,7 +323,14 @@ adminRouter.put(
       grants = await dvSetUserGrants(req.params.id, [...keep, ...docGrants]);
       setUserGrants(req.params.id, grants); // mirror into the hot-path cache
     }
-    res.json({ userId: req.params.id, grants: grants.filter((c) => DOC_ACCESS_CAPS.includes(c)) });
+    const finalGrants = grants.filter((c) => DOC_ACCESS_CAPS.includes(c));
+    pushNotification(req.params.id, {
+      title: 'Your document access was updated',
+      body: finalGrants.length ? `You now have: ${finalGrants.join(', ')}.` : 'Your document access grants were cleared.',
+      kind: 'system',
+      link: '/documents',
+    });
+    res.json({ userId: req.params.id, grants: finalGrants });
   }),
 );
 

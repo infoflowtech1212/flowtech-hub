@@ -12,6 +12,8 @@ import { z } from 'zod';
 import { USE_MOCKS } from '../config.js';
 import { createTicket } from '../store/tickets.js';
 import { dvCreateTicket, ticketDataverseEnabled } from '../dataverse/tickets.js';
+import { usersWithCapability } from '../auth/permissions.js';
+import { pushNotification } from '../store/notifications.js';
 import { logger } from '../logger.js';
 
 export const publicRouter = Router();
@@ -56,6 +58,14 @@ publicRouter.post('/tickets', submitLimiter, async (req, res, next) => {
             submitterEmail: email,
             source: 'public-form',
           });
+    for (const agentId of usersWithCapability('helpdesk.manage')) {
+      pushNotification(agentId, {
+        title: 'New public support request',
+        body: `${name}: "${subject}"`,
+        kind: 'system',
+        link: '/helpdesk',
+      });
+    }
     res.status(201).json({ ok: true, reference: ticket.id });
   } catch (err) {
     logger.error({ err }, 'public ticket submission failed');
