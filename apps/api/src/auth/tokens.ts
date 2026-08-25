@@ -12,6 +12,18 @@ export class ReauthRequiredError extends Error {
 }
 
 /**
+ * Route handlers that call Graph via graphClientFor() never see a raw
+ * ReauthRequiredError — the Graph SDK's authProvider pipeline wraps whatever
+ * the token accessor throws into its own GraphError, which drops the
+ * original prototype chain (`instanceof ReauthRequiredError` then fails).
+ * The SDK's wrapper does preserve `.message`/`.code` from the original error,
+ * so check those too rather than relying on instanceof alone.
+ */
+export const isReauthRequiredError = (err: unknown): boolean =>
+  err instanceof ReauthRequiredError ||
+  (typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'ReauthRequiredError');
+
+/**
  * Silently acquire a downstream access token for the given account, using the
  * server-side cached refresh token. Never interactive — if silent fails, the
  * user must sign in again.

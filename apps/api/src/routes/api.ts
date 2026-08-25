@@ -34,7 +34,7 @@ import {
   deleteCompanyEvent as gDeleteCompanyEvent,
   listCompanyEvents as gListCompanyEvents,
 } from '../graph/calendar.js';
-import { ReauthRequiredError } from '../auth/tokens.js';
+import { isReauthRequiredError } from '../auth/tokens.js';
 import { roleNamesFor, usersWithCapability } from '../auth/permissions.js';
 import { requireCapability } from '../auth/middleware.js';
 import { adminRouter } from './admin.js';
@@ -97,7 +97,7 @@ const live =
     try {
       await fn(req, res);
     } catch (err) {
-      if (err instanceof ReauthRequiredError) {
+      if (isReauthRequiredError(err)) {
         res.status(401).json({ error: { code: 'unauthenticated', message: 'Sign-in required' } });
         return;
       }
@@ -133,7 +133,7 @@ apiRouter.get('/me', async (req, res, next) => {
     const profile = await getMyProfile(auth);
     res.json({ ...profile, roles, capabilities: auth.capabilities });
   } catch (err) {
-    if (err instanceof ReauthRequiredError) {
+    if (isReauthRequiredError(err)) {
       return res.status(401).json({ error: { code: 'unauthenticated', message: 'Sign-in required' } });
     }
     next(err);
@@ -185,7 +185,7 @@ apiRouter.get('/me/photo', async (req, res, next) => {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.end(photo.buffer);
   } catch (err) {
-    if (err instanceof ReauthRequiredError) return res.status(401).end();
+    if (isReauthRequiredError(err)) return res.status(401).end();
     next(err);
   }
 });

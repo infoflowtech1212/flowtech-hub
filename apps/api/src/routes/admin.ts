@@ -11,7 +11,7 @@ import type { Capability, RoleAssignment } from '@flowtech/shared';
 import { config, USE_MOCKS } from '../config.js';
 import { listPeople } from '../graph/directory.js';
 import { getMyProfile, listBootstrapAdminUserIds } from '../graph/me.js';
-import { ReauthRequiredError } from '../auth/tokens.js';
+import { isReauthRequiredError } from '../auth/tokens.js';
 import { requireCapability } from '../auth/middleware.js';
 import {
   ALL_CAPABILITIES,
@@ -80,7 +80,7 @@ const asyncH =
     try {
       await fn(req, res);
     } catch (err) {
-      if (err instanceof ReauthRequiredError) {
+      if (isReauthRequiredError(err)) {
         res.status(401).json({ error: { code: 'unauthenticated', message: 'Sign-in required' } });
         return;
       }
