@@ -14,7 +14,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_holidays` table (Power Platform admin
 // center → FlowTech - L+M Asset Transitions → Tables → Holidays → Columns).
-const TABLE = process.env.DATAVERSE_HOLIDAY_TABLE || 'ft_holidayses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_HOLIDAY_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_HOLIDAY_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_HOLIDAY_ID_COL || `${P}holidaysid`;
 const NAME_COL = process.env.DATAVERSE_HOLIDAY_NAME_COL || `${P}holidayname`;

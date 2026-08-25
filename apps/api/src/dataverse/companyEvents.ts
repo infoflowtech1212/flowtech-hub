@@ -17,7 +17,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_companyevents` table (Power Platform
 // admin center → FlowTech - L+M Asset Transitions → Tables → Company Events → Columns).
-const TABLE = process.env.DATAVERSE_COMPANYEVENT_TABLE || 'ft_companyeventses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_COMPANYEVENT_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_COMPANYEVENT_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_COMPANYEVENT_ID_COL || `${P}companyeventsid`;
 const SUBJECT_COL = process.env.DATAVERSE_COMPANYEVENT_SUBJECT_COL || `${P}subject`;

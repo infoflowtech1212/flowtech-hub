@@ -35,7 +35,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_userroles` table (Power Platform admin
 // center → FlowTech - L+M Asset Transitions → Tables → User Role → Columns).
-const TABLE = process.env.DATAVERSE_ROLE_TABLE || 'ft_userroles'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_ROLE_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_ROLE_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_ROLE_ID_COL || `${P}userroleid`;
 const ROLEKEY_COL = process.env.DATAVERSE_ROLE_ROLEKEY_COL || `${P}roleidentifier`;
@@ -47,7 +47,7 @@ const SYSTEM_COL = process.env.DATAVERSE_ROLE_SYSTEM_COL || `${P}systemroleflag`
 // Defaults below match the live `ft_userroleassignments` table (Power
 // Platform admin center → FlowTech - L+M Asset Transitions → Tables →
 // User Role Assignment → Columns).
-const ASSIGNMENT_TABLE = process.env.DATAVERSE_ROLEASSIGNMENT_TABLE || 'ft_userroleassignments';
+const ASSIGNMENT_TABLE = process.env.DATAVERSE_ROLEASSIGNMENT_TABLE || '';
 const AP = process.env.DATAVERSE_ROLEASSIGNMENT_PREFIX || 'ft_';
 const A_ID_COL = process.env.DATAVERSE_ROLEASSIGNMENT_ID_COL || `${AP}userroleassignmentid`;
 const A_USERID_COL = process.env.DATAVERSE_ROLEASSIGNMENT_USERID_COL || `${AP}useridentifier`;

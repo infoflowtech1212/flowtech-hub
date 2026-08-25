@@ -22,7 +22,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_grantses` table (Power Platform admin
 // center → FlowTech - L+M Asset Transitions → Tables → Grants → Columns).
-const TABLE = process.env.DATAVERSE_GRANT_TABLE || 'ft_grantses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_GRANT_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_GRANT_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_GRANT_ID_COL || `${P}grantsid`;
 const USERID_COL = process.env.DATAVERSE_GRANT_USERID_COL || `${P}useridentifier`;

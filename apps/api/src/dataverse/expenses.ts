@@ -23,7 +23,7 @@ import { dataverseClientFor } from './client.js';
  * Enabled only when DATAVERSE_EXPENSE_TABLE is set; otherwise the app uses
  * the built-in in-memory store, which is lost on every redeploy.
  */
-const TABLE = process.env.DATAVERSE_EXPENSE_TABLE || 'ft_expenseses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_EXPENSE_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_EXPENSE_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_EXPENSE_ID_COL || `${P}expensesid`;
 const ITEM_COL = process.env.DATAVERSE_EXPENSE_ITEM_COL || `${P}assetname`;

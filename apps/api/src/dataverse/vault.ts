@@ -16,7 +16,7 @@ import { dataverseClientFor } from './client.js';
  * SECURITY: the secret is stored here — use an encrypted column or a Key Vault
  * reference in production; restrict the table's security role tightly.
  */
-const TABLE = process.env.DATAVERSE_VAULT_TABLE || 'cre2b_publicvaults'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_VAULT_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_VAULT_PREFIX || 'cre2b_'; // column prefix
 const ID_COL = process.env.DATAVERSE_VAULT_ID_COL || `${P}publicvaultsid`;
 const TITLE_COL = process.env.DATAVERSE_VAULT_TITLE_COL || `${P}title`;

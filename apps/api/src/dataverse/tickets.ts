@@ -18,7 +18,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_supporttickets` table (Power Platform
 // admin center → FlowTech - L+M Asset Transitions → Tables → Support Ticket → Columns).
-const TABLE = process.env.DATAVERSE_TICKET_TABLE || 'ft_supporttickets'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_TICKET_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_TICKET_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_TICKET_ID_COL || `${P}supportticketid`;
 const SUBJECT_COL = process.env.DATAVERSE_TICKET_SUBJECT_COL || `${P}ticketsubject`;

@@ -21,7 +21,7 @@ import { dataverseClientFor } from './client.js';
 // center → FlowTech - L+M Asset Transitions → Tables → Profiles → Columns).
 // Entity set is "profileses", not "profiles" — Dataverse appends "es" when
 // the schema name already ends in "s" (same as ft_requestses, ft_publicvaultses).
-const TABLE = process.env.DATAVERSE_PROFILE_TABLE || 'ft_profileses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_PROFILE_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_PROFILE_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_PROFILE_ID_COL || `${P}profilesid`;
 const USERID_COL = process.env.DATAVERSE_PROFILE_USERID_COL || `${P}employeeidentifier`;

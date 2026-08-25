@@ -18,7 +18,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_projectses` table (Power Platform admin
 // center → FlowTech - L+M Asset Transitions → Tables → projects → Columns).
-const TABLE = process.env.DATAVERSE_PROJECT_TABLE || 'ft_projectses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_PROJECT_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_PROJECT_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_PROJECT_ID_COL || `${P}projectsid`;
 const NAME_COL = process.env.DATAVERSE_PROJECT_NAME_COL || `${P}projectname`;

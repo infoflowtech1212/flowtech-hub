@@ -19,7 +19,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_notes` table (Power Platform admin
 // center → FlowTech - L+M Asset Transitions → Tables → Note → Columns).
-const TABLE = process.env.DATAVERSE_QUICKNOTE_TABLE || 'ft_notes'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_QUICKNOTE_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_QUICKNOTE_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_QUICKNOTE_ID_COL || `${P}noteid`;
 const TITLE_COL = process.env.DATAVERSE_QUICKNOTE_TITLE_COL || `${P}notetitle`;

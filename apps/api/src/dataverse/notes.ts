@@ -18,7 +18,7 @@ import { dataverseClientFor } from './client.js';
  */
 // Defaults below match the live `ft_adminnoteses` table (Power Platform
 // admin center → FlowTech - L+M Asset Transitions → Tables → Admin Notes → Columns).
-const TABLE = process.env.DATAVERSE_NOTE_TABLE || 'ft_adminnoteses'; // entity set (plural)
+const TABLE = process.env.DATAVERSE_NOTE_TABLE || ''; // entity set (plural)
 const P = process.env.DATAVERSE_NOTE_PREFIX || 'ft_';
 const ID_COL = process.env.DATAVERSE_NOTE_ID_COL || `${P}adminnotesid`;
 const TITLE_COL = process.env.DATAVERSE_NOTE_TITLE_COL || `${P}updatetitle`;
